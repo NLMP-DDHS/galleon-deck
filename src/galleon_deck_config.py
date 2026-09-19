@@ -851,6 +851,11 @@ class Window(Adw.ApplicationWindow):
         fb.connect("notify::selected", lambda r, _p: self.model.set(
             "auto_switch", "fallback", fallback_names[r.get_selected()], remove=r.get_selected() == 0))
         a.add(fb)
+        for name, p in self.model.profiles.items():  # rules a profile brings along (add-ons), checked first
+            for rule in p["data"].get("auto_switch", []):
+                what = " + ".join(f"{field} {rule[field]}" for field in ("class", "title") if rule.get(field)) or "any window"
+                a.add(Adw.ActionRow(title=f"{what} → {name}", use_markup=False,
+                                    subtitle=f"From profiles/{name}.toml; checked before the rules below"))
         for i, rule in enumerate(auto.get("rules", [])):
             row = Adw.EntryRow(title=f"Window class → {rule.get('profile')}", text=rule.get("class", ""))
             prof = Gtk.DropDown(model=Gtk.StringList.new(names), valign=Gtk.Align.CENTER,

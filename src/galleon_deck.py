@@ -45,6 +45,7 @@ import evdev
 from evdev import ecodes
 from PIL import Image, ImageDraw, ImageFont
 
+VERSION = "1.1.0"  # add-ons can require a minimum version
 VID, PID = "00001B1C", "00002B18"
 KEYS = 12
 KEY_PX = 160
@@ -63,7 +64,9 @@ def log(*args):
 # ---------------------------------------------------------------- themes ---
 
 # Every theme has every field; user themes and a profile's [theme_overrides]
-# only need the fields they change.
+# only need the fields they change. key_style "hud" draws cut corners with
+# bright corner ticks (in the `tick` colour) instead of rounded ones; there,
+# `radius` is the size of the cut.
 THEMES = {
     "amber": {  # warm CRT amber: orange-red on burnt brown, gold highlights, red frame
         "bg": "#1f1204", "key_bg": "#251505", "fg": "#f04a14", "accent": "#e0a93f",
@@ -102,7 +105,7 @@ THEMES = {
     },
 }
 DEFAULT_THEME = "amber"
-THEME_DEFAULTS = {**THEMES[DEFAULT_THEME], "icon_font": "Symbols Nerd Font"}
+THEME_DEFAULTS = {**THEMES[DEFAULT_THEME], "icon_font": "Symbols Nerd Font", "key_style": "rounded", "tick": "accent"}
 
 
 def all_themes():
@@ -371,6 +374,21 @@ def colour(value, theme):
     return theme.get(value, value) if isinstance(value, str) and not value.startswith("#") else value
 
 
+def draw_frame(d, box, theme, outline, width, tick=None):
+    """A key's or the screen's outline in the theme's key_style."""
+    if theme.get("key_style") != "hud":
+        d.rounded_rectangle(box, radius=theme["radius"], outline=outline, width=width)
+        return
+    x0, y0, x1, y1 = box
+    cut = theme["radius"]
+    d.polygon([(x0 + cut, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0, y1), (x0, y0 + cut)],
+              outline=outline, width=width)
+    tick = colour(tick or theme.get("tick", "accent"), theme)
+    arm = max(12, (x1 - x0) // 7)
+    d.line([(x1 - arm, y0), (x1, y0), (x1, y0 + arm)], fill=tick, width=width + 1, joint="curve")
+    d.line([(x0, y1 - arm), (x0, y1), (x0 + arm, y1)], fill=tick, width=width + 1, joint="curve")
+
+
 def render_key(spec, theme, pressed=False):
     bg = colour(spec.get("bg", theme["key_bg"]), theme)
     fg = colour(spec.get("fg", theme["fg"]), theme)
@@ -381,8 +399,8 @@ def render_key(spec, theme, pressed=False):
     if not spec:
         return img
     bw = theme["border_width"]
-    d.rounded_rectangle([bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], radius=theme["radius"],
-                        outline=colour(spec.get("border", theme["border"]), theme), width=bw)
+    draw_frame(d, [bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], theme,
+               colour(spec.get("border", theme["border"]), theme), bw, tick=spec.get("border"))
     label = str(spec.get("label", ""))
     icon = spec.get("icon")
     image = spec.get("image")
@@ -412,8 +430,8 @@ def render_theme_key(name, theme, current):
     img = Image.new("RGB", (KEY_PX, KEY_PX), theme["key_bg"])
     d = ImageDraw.Draw(img)
     bw = theme["border_width"] + (2 if current else 0)
-    d.rounded_rectangle([bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], radius=theme["radius"],
-                        outline=theme["accent"] if current else theme["border"], width=bw)
+    draw_frame(d, [bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], theme,
+               theme["accent"] if current else theme["border"], bw)
     for i, c in enumerate((theme["fg"], theme["accent"], theme["dim"])):
         d.ellipse([34 + i * 34, 34, 58 + i * 34, 58], fill=c)
     d.text((KEY_PX // 2, 100), name.upper(), font=fit(d, name.upper(), theme["font"], 28, KEY_PX - 20),
@@ -474,7 +492,11 @@ def render_lcd(state, theme):
     img = Image.new("RGB", (LCD_W, LCD_H), theme["bg"])
     d = ImageDraw.Draw(img)
     fam, fg, accent, dim = theme["font"], theme["fg"], theme["accent"], theme["dim"]
-    d.rectangle([4, 4, LCD_W - 5, LCD_H - 5], outline=colour(theme.get("frame", "accent"), theme), width=3)
+    if theme.get("key_style") == "hud":
+        draw_frame(d, [4, 4, LCD_W - 5, LCD_H - 5], {**theme, "radius": 28},
+                   colour(theme.get("frame", "accent"), theme), 3)
+    else:
+        d.rectangle([4, 4, LCD_W - 5, LCD_H - 5], outline=colour(theme.get("frame", "accent"), theme), width=3)
 
     # Profile / page and page position, like the Stream Deck's page indicator.
     head = f"{state['profile']} / {state['page']}".upper()
@@ -511,11 +533,12 @@ def render_lcd(state, theme):
     vol, muted = state.get("volume", (None, False))
     if vol is not None:
         x0, x1, y = 96, LCD_W - 130, 340
+        r = 0 if theme.get("key_style") == "hud" else 9
         d.text((56, y), "󰝟" if muted else "󰕾", font=font(theme["icon_font"], 30), fill=dim if muted else accent, anchor="lm")
-        d.rounded_rectangle([x0, y - 9, x1, y + 9], radius=9, outline=dim, width=2)
+        d.rounded_rectangle([x0, y - 9, x1, y + 9], radius=r, outline=dim, width=2)
         fill_w = int((x1 - x0 - 6) * min(vol, 100) / 100)
         if fill_w > 0:
-            d.rounded_rectangle([x0 + 3, y - 6, x0 + 3 + fill_w, y + 6], radius=6, fill=dim if muted else fg)
+            d.rounded_rectangle([x0 + 3, y - 6, x0 + 3 + fill_w, y + 6], radius=r * 2 // 3, fill=dim if muted else fg)
         d.text((LCD_W - 40, y), "MUTE" if muted else f"{vol}%", font=font(fam, 26), fill=dim if muted else fg, anchor="rm")
     return img
 
@@ -571,7 +594,7 @@ class KeyDecrypt:
         img = Image.new("RGB", (KEY_PX, KEY_PX), th["key_bg"])
         d = ImageDraw.Draw(img)
         bw = th["border_width"]
-        d.rounded_rectangle([bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], radius=th["radius"], outline=th["border"], width=bw)
+        draw_frame(d, [bw, bw, KEY_PX - 1 - bw, KEY_PX - 1 - bw], th, th["border"], bw)
         for row in range(4):
             for col in range(4):
                 ch = self.rng.choice(CIPHER)
@@ -1009,7 +1032,7 @@ def set_top_level(path, key, value):
 
 def write_profile(path, profile):
     """Write a profile file from a dict: theme, start_page, settings_page,
-    theme_overrides, page[]. Keeps the file's leading comment block."""
+    auto_switch, theme_overrides, page[]. Keeps the file's leading comment block."""
     head = []
     try:
         with open(path) as f:
@@ -1028,6 +1051,8 @@ def write_profile(path, profile):
             out.append(f"{key} = {toml_value(profile[key])}")
     if profile.get("settings_page") is False:
         out.append("settings_page = false")
+    if profile.get("auto_switch"):
+        out.append(f"auto_switch = {toml_value(profile['auto_switch'], multiline=True)}")
     if profile.get("theme_overrides"):
         out += ["", "[theme_overrides]"] + [f"{toml_key(k)} = {toml_value(v)}" for k, v in profile["theme_overrides"].items()]
     for page in profile.get("page", []):
@@ -1073,6 +1098,12 @@ def load_config():
             except tomllib.TOMLDecodeError as e:
                 raise ValueError(f"profiles/{name}.toml: {e}") from None
         validate_pages(prof.get("page", []), f"profiles/{name}.toml")
+        for rule in prof.get("auto_switch", []):
+            try:
+                re.compile(rule.get("class", ""))
+                re.compile(rule.get("title", ""))
+            except (re.error, AttributeError) as e:
+                raise ValueError(f"profiles/{name}.toml: auto_switch rule {rule!r}: {e}") from None
         theme_name = prof.get("theme", DEFAULT_THEME)
         if theme_name not in themes:
             raise ValueError(f"profiles/{name}.toml: unknown theme {theme_name!r} (have: {', '.join(themes)})")
@@ -1088,8 +1119,16 @@ def load_config():
             raise ValueError(f"auto_switch rule points at unknown profile {rule.get('profile')!r}")
         re.compile(rule.get("class", ""))
         re.compile(rule.get("title", ""))
-    cfg.update(profiles=profiles, themes=themes)
+    cfg.update(profiles=profiles, themes=themes, switch_rules=switch_rules(cfg, profiles))
     return cfg
+
+
+def switch_rules(cfg, profiles):
+    """Auto-switch rules in the order they're checked: each profile's own
+    `auto_switch` rules first (an add-on's profile brings its game's rule and
+    takes it away when removed), then the rules in config.toml."""
+    rules = [{**rule, "profile": name} for name, prof in profiles.items() for rule in prof.get("auto_switch", [])]
+    return rules + cfg.get("auto_switch", {}).get("rules", [])
 
 
 def config_mtime():
@@ -1382,9 +1421,8 @@ class App:
         """Auto-switch: only acts when the matching profile changes, so manual picks stick."""
         if not self.cfg:
             return
-        auto = self.cfg.get("auto_switch", {})
-        target = auto.get("fallback")
-        for rule in auto.get("rules", []):
+        target = self.cfg.get("auto_switch", {}).get("fallback")
+        for rule in self.cfg["switch_rules"]:
             if (re.search(rule.get("class", ""), cls) and re.search(rule.get("title", ""), title)):
                 target = rule["profile"]
                 break
@@ -1632,6 +1670,9 @@ PID_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "galleon-de
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--version":
+        print(VERSION)
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "--theme-from-wallpaper":
         settings = {}
         try:

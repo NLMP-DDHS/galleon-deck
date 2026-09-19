@@ -17,6 +17,10 @@ Windows and macOS, so this project takes its place.
 - **Auto-switching:** changes profile when a game or app gets focus (Hyprland, Sway,
   i3, niri and X11 desktops).
 - **Themes:** 7 built-in themes, your own, or one **generated from your wallpaper**.
+  Themes can use rounded keys or a sci-fi `hud` style with cut corners.
+- **Add-ons:** ready-made profiles for games, with their own themes and auto-switch
+  rules, from [galleon-deck-addons](https://github.com/NLMP-DDHS/galleon-deck-addons)
+  (Star Citizen so far). Install and remove them with one command.
 - **Boot animation:** a CRT power-on effect, a terminal boot log, your logo glitching in,
   and keys that "decrypt" one by one. Plays at login and when the keyboard is plugged in.
   Your own GIF also works.
@@ -103,6 +107,10 @@ profiles/<name>.toml one per profile: its theme and pages of keys
 themes/<name>.toml   your own themes, or overrides of built-in ones (any subset of colours)
 ```
 
+A profile can bring its own auto-switch rules, checked before the ones in
+`config.toml`: `auto_switch = [{ class = "^mygame$" }]` at the top of its file.
+Add-ons use this, so removing one also removes its rule.
+
 [`examples/config.toml`](examples/config.toml) documents every option. A key looks like:
 
 ```toml
@@ -112,6 +120,7 @@ themes/<name>.toml   your own themes, or overrides of built-in ones (any subset 
 ```
 
 Useful commands:
+- `galleon-deck --version` prints the version (add-ons can require a minimum).
 - `galleon-deck --theme-from-wallpaper [image]` builds the wallpaper theme from a terminal.
 - `journalctl --user -u galleon-deck` shows the service log.
 - `systemctl --user restart galleon-deck` restarts the service and replays the boot animation.
