@@ -821,7 +821,25 @@ def run(cmd):
     argv = ["sh", "-c", cmd]
     if os.environ.get("UWSM_WAIT_VARNAMES") or _uwsm_session():
         argv = ["uwsm", "app", "--"] + argv
-    return subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.Popen(argv, env=session_env(), start_new_session=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def session_env():
+    """Our environment with empty or missing variables filled in from the
+    systemd user manager. The service can start before the compositor has
+    exported WAYLAND_DISPLAY, and would otherwise hand apps an empty one."""
+    env = dict(os.environ)
+    try:
+        out = subprocess.run(["systemctl", "--user", "show-environment"],
+                             capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return env
+    for line in out.splitlines():
+        name, sep, value = line.partition("=")
+        if sep and value and not env.get(name):
+            env[name] = value
+    return env
 
 
 _uwsm = None
