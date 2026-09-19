@@ -20,7 +20,8 @@ Windows and macOS, so this project takes its place.
   Themes can use rounded keys or a sci-fi `hud` style with cut corners.
 - **Add-ons:** ready-made profiles for games, with their own themes and auto-switch
   rules, from [galleon-deck-addons](https://github.com/NLMP-DDHS/galleon-deck-addons)
-  (Star Citizen so far). Install and remove them with one command.
+  (Star Citizen so far). Install and remove them from the app's **Add-ons** tab or
+  with one command.
 - **Boot animation:** a CRT power-on effect, a terminal boot log, your logo glitching in,
   and keys that "decrypt" one by one. Plays at login and when the keyboard is plugged in.
   Your own GIF also works.
@@ -89,6 +90,12 @@ Open **Galleon Deck** from your app menu, or run `galleon-deck-config`:
 - **Look:** pick a theme, generate one from your wallpaper, or tweak single colours.
 - **Settings:** brightness, dial volume step, clock, boot animation, and auto-switch rules.
 - **Profiles and pages:** the menus next to them add, rename, reorder and delete.
+- **Add-ons:** install, upgrade and remove add-ons, and run their tools (like syncing
+  a game's keybinds). Point it at your `galleon-deck-addons` folder once.
+
+The app follows the deck. It opens on the profile and page the deck is showing, and
+switches along when the deck changes, for example when a game takes focus. Pick
+another profile in the app to edit it; the app stays on it until the deck moves again.
 
 Every change is saved immediately and shows up on the deck within a second.
 

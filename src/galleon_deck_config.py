@@ -7,10 +7,12 @@ deck updates live. Previews are drawn with the service's own renderer.
 """
 
 import io
+import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 try:
     import tomllib
@@ -78,14 +80,30 @@ def systemd_unit():
 
 
 def service_running():
-    if systemd_unit():
-        return subprocess.run(["systemctl", "--user", "is-active", "--quiet", "galleon-deck.service"]).returncode == 0
-    try:
+    if systemd_unit() and subprocess.run(["systemctl", "--user", "is-active", "--quiet", "galleon-deck.service"]).returncode == 0:
+        return True
+    try:  # started some other way: XDG autostart, or by hand from a checkout
         with open(gd.PID_FILE) as f:
             os.kill(int(f.read().strip()), 0)
         return True
     except (OSError, ValueError):
         return False
+
+
+def addon_tool(config):
+    """The galleon-addon script: from the add-ons folder chosen in the app, or on PATH."""
+    folder = config.get("addons", {}).get("dir")
+    if folder:
+        path = os.path.join(os.path.expanduser(folder), "galleon-addon")
+        if os.path.isfile(path):
+            return path
+    linked = os.path.expanduser("~/.local/bin/galleon-addon")  # where it links itself; often not on an app's PATH
+    return shutil.which("galleon-addon") or (linked if os.path.isfile(linked) else None)
+
+
+def addon_env():
+    """Run galleon-addon against this copy of galleon-deck, whichever is on PATH."""
+    return {**os.environ, "GALLEON_DECK_SRC": os.path.dirname(os.path.realpath(gd.__file__))}
 
 
 def restart_service():
@@ -174,6 +192,12 @@ class Window(Adw.ApplicationWindow):
         self.key = 0
         self.pending = {}  # debounce source ids
         self.icons = None
+        self.addons = None  # galleon-addon list --json, fetched when the Add-ons tab is built
+        self.followed = gd.deck_state()  # open on whatever the deck is showing
+        if self.followed and self.followed.get("profile") in self.model.profiles:
+            self.profile = self.followed["profile"]
+            names = [p["name"] for p in self.pages()]
+            self.page = names.index(self.followed["page"]) if self.followed.get("page") in names else 0
 
         css = Gtk.CssProvider()
         css.load_from_data(CSS)
@@ -221,12 +245,17 @@ class Window(Adw.ApplicationWindow):
         self.key_page = Adw.PreferencesPage()
         self.look_page = Adw.PreferencesPage()
         self.settings_page = Adw.PreferencesPage()
+        self.addons_page = Adw.PreferencesPage()
         self.stack.add_titled_with_icon(self.key_page, "key", "Key", "input-keyboard-symbolic")
         self.stack.add_titled_with_icon(self.look_page, "look", "Look", "applications-graphics-symbolic")
         self.stack.add_titled_with_icon(self.settings_page, "settings", "Settings", "preferences-system-symbolic")
+        self.stack.add_titled_with_icon(self.addons_page, "addons", "Add-ons", "application-x-addon-symbolic")
+        self.stack.connect("notify::visible-child-name",
+                           lambda st, _p: st.get_visible_child_name() == "addons" and self.addons is None and self.build_addons_page(fetch=True))
 
         self.refresh_all()
         GLib.timeout_add_seconds(2, self.watch)
+        GLib.timeout_add(500, self.follow_deck)
 
     # -------------------------------------------------------------- helpers
     def menu_button(self, icon, tooltip, items):
@@ -1089,6 +1118,176 @@ class Window(Adw.ApplicationWindow):
             self.refresh_all()
         return True
 
+    def follow_deck(self):
+        """When the deck changes profile or page (a dial, a key, a game taking focus),
+        show the same here. Only changes are followed, so picking another profile in
+        the app to edit it stays put until the deck moves again."""
+        state = gd.deck_state()
+        if not state or state == self.followed:
+            return True
+        self.followed = state
+        if self.pending or state.get("profile") not in self.model.profiles:
+            return True
+        if state["profile"] != self.profile:
+            self.flush()
+            self.profile, self.page, self.key = state["profile"], 0, 0
+            names = [p["name"] for p in self.pages()]
+            self.page = names.index(state["page"]) if state.get("page") in names else 0
+            self.refresh_all()
+            self.toast(f"Following the deck: {self.profile}")
+        else:
+            names = [p["name"] for p in self.pages()]
+            if state.get("page") in names and names.index(state["page"]) != self.page:
+                self.page = names.index(state["page"])
+                self.refresh_page_buttons()
+                self.refresh_deck()
+                self.build_key_page()
+        return True
+
+    # -------------------------------------------------------------- add-ons
+    def build_addons_page(self, fetch=False):
+        page = self.addons_page
+        self.clear_page(page)
+        tool = addon_tool(self.model.config)
+        g = Adw.PreferencesGroup(title="Add-ons", description="Ready-made profiles for games, with their own themes, "
+                                 "keys and auto-switch rules. Installing one adds its profile; removing it takes the "
+                                 "profile away again and backs it up.")
+        buttons = Gtk.Box(spacing=6)
+        folder = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                            tooltip_text="Choose the galleon-deck-addons folder")
+        folder.connect("clicked", lambda _b: self.choose_addons_folder())
+        reload = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                            tooltip_text="Look for add-ons again")
+        reload.connect("clicked", lambda _b: self.build_addons_page(fetch=True))
+        buttons.append(folder)
+        buttons.append(reload)
+        g.set_header_suffix(buttons)
+        self.add_group(page, g)
+        if not tool:
+            g.add(Adw.ActionRow(title="No add-ons folder yet", title_lines=0, subtitle_lines=0, use_markup=False,
+                                subtitle="Download the collection (git clone https://github.com/NLMP-DDHS/galleon-deck-addons) "
+                                         "and choose its folder with the folder button above."))
+            return
+        if fetch or self.addons is None:
+            try:
+                r = subprocess.run([tool, "list", "--json"], env=addon_env(), capture_output=True, text=True, timeout=30)
+                self.addons = json.loads(r.stdout) if r.returncode == 0 else (r.stderr.strip() or "galleon-addon failed")
+            except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+                self.addons = str(e)
+        if isinstance(self.addons, str):
+            g.add(Adw.ActionRow(title="Couldn't list add-ons", subtitle=self.addons, subtitle_lines=0, use_markup=False))
+            return
+        if not self.addons:
+            g.add(Adw.ActionRow(title="No add-ons in this folder", subtitle=os.path.dirname(os.path.realpath(tool)), use_markup=False))
+        for a in self.addons:
+            if a["upgrade"]:
+                status = f"Installed {a['installed']} · {a['version']} available"
+            elif a["installed"]:
+                status = f"Installed {a['installed']}"
+            else:
+                status = f"Version {a['version']} · not installed"
+            row = Adw.ExpanderRow(title=a["title"], subtitle=status, use_markup=False)
+            if not a["compatible"]:
+                row.set_subtitle(f"Needs galleon-deck {a['requires']} (this is {gd.VERSION})")
+            elif not a["installed"] or a["upgrade"]:
+                b = Gtk.Button(label="Upgrade" if a["upgrade"] else "Install", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+                b.connect("clicked", lambda btn, a=a: self.install_addon(btn, a))
+                row.add_suffix(b)
+            if a["installed"]:
+                rm = Gtk.Button(label="Remove", valign=Gtk.Align.CENTER, css_classes=["destructive-action"])
+                rm.connect("clicked", lambda btn, a=a: self.remove_addon(btn, a))
+                row.add_suffix(rm)
+            row.add_row(Adw.ActionRow(title=a["description"], title_lines=0, use_markup=False))
+            for profile in a.get("profiles", []):
+                if profile in self.model.profiles:
+                    show = Adw.ActionRow(title=f"Profile “{profile}”", subtitle="Open it here to edit its keys and look",
+                                         activatable=True, use_markup=False)
+                    show.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+                    show.connect("activated", lambda _r, p=profile: self.show_profile(p))
+                    row.add_row(show)
+            for cmd in a["commands"]:
+                c = Adw.ActionRow(title=cmd.replace("-", " ").capitalize(), subtitle=f"galleon-addon run {a['name']} {cmd}", use_markup=False)
+                run = Gtk.Button(label="Run", valign=Gtk.Align.CENTER)
+                run.connect("clicked", lambda btn, a=a, cmd=cmd: self.run_addon(
+                    btn, ["run", a["name"], cmd], None, show_output=cmd.replace("-", " ").capitalize()))
+                c.add_suffix(run)
+                row.add_row(c)
+            g.add(row)
+
+    def choose_addons_folder(self):
+        dialog = Gtk.FileDialog(title="Choose the galleon-deck-addons folder")
+
+        def chosen(d, result):
+            try:
+                folder = d.select_folder_finish(result)
+            except GLib.Error:
+                return
+            path = folder.get_path()
+            if not os.path.isfile(os.path.join(path, "galleon-addon")):
+                return self.toast("That folder has no galleon-addon script")
+            self.model.set("addons", "dir", path)
+            self.build_addons_page(fetch=True)
+        dialog.select_folder(self, None, chosen)
+
+    def show_profile(self, name):
+        if name in self.model.profiles:
+            self.flush()
+            self.profile, self.page, self.key = name, 0, 0
+            self.refresh_all()
+            self.stack.set_visible_child_name("key")
+
+    def install_addon(self, button, a):
+        profiles = a.get("profiles", [])
+        self.run_addon(button, ["install", a["name"]],
+                       f"{'Upgraded' if a['upgrade'] else 'Installed'} {a['title']}",
+                       after=lambda: profiles and self.show_profile(profiles[0]))
+
+    def remove_addon(self, button, a):
+        self.confirm(f"Remove {a['title']}?", "Its profile and themes are removed from the deck. The profile, with "
+                     "your changes, is backed up to ~/.local/state/galleon-deck/addons/backups first.", "Remove",
+                     lambda: self.run_addon(button, ["remove", a["name"]], f"Removed {a['title']}"))
+
+    def run_addon(self, button, args, done_text, after=None, show_output=None):
+        """Run galleon-addon in the background, then reload and report."""
+        tool = addon_tool(self.model.config)
+        self.flush()
+        button.set_sensitive(False)
+
+        def work():
+            try:
+                r = subprocess.run([tool] + args, env=addon_env(), capture_output=True, text=True, timeout=300)
+                ok, out = r.returncode == 0, (r.stdout + r.stderr).strip()
+            except (OSError, subprocess.TimeoutExpired) as e:
+                ok, out = False, str(e)
+            GLib.idle_add(finish, ok, out)
+
+        def finish(ok, out):
+            self.reload_model()
+            self.build_addons_page(fetch=True)
+            if ok and not show_output:
+                self.toast(done_text)
+                if after:
+                    after()
+            else:
+                dialog = Adw.AlertDialog.new(show_output or "Add-on failed", None)
+                text = Gtk.Label(label=out or "(no output)", selectable=True, xalign=0, wrap=True, css_classes=["monospace"])
+                scroll = Gtk.ScrolledWindow(child=text, min_content_height=200, min_content_width=520, propagate_natural_height=True)
+                dialog.set_extra_child(scroll)
+                dialog.add_response("close", "Close")
+                dialog.present(self)
+            return False
+        threading.Thread(target=work, daemon=True).start()
+
+    def reload_model(self):
+        try:
+            self.model.load()
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            return self.show_error(f"Config error: {e}")
+        if self.profile not in self.model.profiles:
+            self.profile, self.page, self.key = next(iter(self.model.profiles)), 0, 0
+        self.page = min(self.page, len(self.pages()) - 1)
+        self.refresh_all()
+
     def update_status(self):
         active = service_running()
         self.status.set_label("● deck running" if active else "○ service stopped")
@@ -1109,7 +1308,7 @@ class Window(Adw.ApplicationWindow):
 
     def about(self):
         about = Adw.AboutDialog(application_name="Galleon Deck", application_icon="input-keyboard",
-                                developer_name="galleon-deck contributors", version="0.1.0",
+                                developer_name="galleon-deck contributors", version=gd.VERSION,
                                 comments="Stream Deck support for the Corsair Galleon 100 SD keyboard on Linux.",
                                 license_type=Gtk.License.MIT_X11)
         about.present(self)

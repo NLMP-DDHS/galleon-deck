@@ -1249,6 +1249,7 @@ class App:
         self.running = True
         self.lock = threading.RLock()  # the window-event thread also switches profiles
         self.auto_target = None
+        self.published = None
 
     # config ---------------------------------------------------------------
     def reload_if_changed(self):
@@ -1322,6 +1323,20 @@ class App:
             img = render_theme_key(name, self.cfg["themes"][name], name == self.prof()["theme_name"])
             return Image.eval(img, lambda v: 255 - v) if pressed else img
         return render_key(spec, self.theme, pressed)
+
+    def publish_state(self):
+        """Tell the configurator what the deck shows, so it can follow along."""
+        if not self.cfg:
+            return
+        state = {"profile": self.profile, "page": self.pages()[self.page]["name"]}
+        if state != self.published:
+            try:
+                with open(STATE_FILE + ".tmp", "w") as f:
+                    json.dump(state, f)
+                os.replace(STATE_FILE + ".tmp", STATE_FILE)
+                self.published = state
+            except OSError as e:
+                log(f"state file: {e}")
 
     def draw_key(self, i, pressed=False):
         self.deck.key_image(i, jpeg(self.key_image(i, pressed)))
@@ -1658,6 +1673,7 @@ class App:
                         self.draw_lcd()
                     elif self.lcd_dirty:
                         self.draw_lcd()
+                    self.publish_state()
             except OSError as e:
                 log(f"device error: {e}")
                 with self.lock:
@@ -1667,6 +1683,16 @@ class App:
 
 
 PID_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "galleon-deck.pid")
+STATE_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "galleon-deck.state")
+
+
+def deck_state():
+    """What the running deck shows: {"profile": ..., "page": ...}, or None."""
+    try:
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def main():
@@ -1696,10 +1722,11 @@ def main():
     try:
         app.main()
     finally:
-        try:
-            os.remove(PID_FILE)
-        except OSError:
-            pass
+        for path in (PID_FILE, STATE_FILE):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
