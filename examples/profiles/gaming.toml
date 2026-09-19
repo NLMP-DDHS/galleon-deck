@@ -1,0 +1,30 @@
+# Gaming profile: switched to automatically while a game has focus (see
+# [auto_switch] in config.toml), and back to desktop when you leave it.
+
+theme = "hud"
+start_page = "game"
+
+[[page]]
+name = "game"
+keys = [
+  { icon = "\U000F036D", label = "Mic", exec = "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle 2>/dev/null || pactl set-source-mute @DEFAULT_SOURCE@ toggle" },
+  { icon = "\U000F066F", label = "Discord", exec = "discord" },
+  { icon = "", label = "Steam", exec = "steam" },
+  { icon = "\U000F0100", label = "Shot", confirm = true, exec = 'f="$HOME/Pictures/Screenshots/$(date +%F_%H-%M-%S).png"; mkdir -p "${f%/*}"; if command -v grim >/dev/null; then grim "$f"; elif command -v spectacle >/dev/null; then spectacle -b -n -f -o "$f"; elif command -v gnome-screenshot >/dev/null; then gnome-screenshot -f "$f"; elif command -v scrot >/dev/null; then scrot "$f"; else exit 1; fi && notify-send -i "$f" "Screenshot saved" "${f##*/}"' },
+  {}, {},
+  { icon = "\U000F040E", label = "Play", media = "play-pause" },
+  { icon = "\U000F04AE", label = "Prev", media = "previous" },
+  { icon = "\U000F04AD", label = "Next", media = "next" },
+  {}, {},
+  { icon = "\U000F02DC", label = "desktop", profile = "desktop", fg = "accent" },
+]
+
+[[page]]
+name = "numpad"
+keys = [
+  { label = "7", key = "KP7" }, { label = "8", key = "KP8" }, { label = "9", key = "KP9" },
+  { label = "4", key = "KP4" }, { label = "5", key = "KP5" }, { label = "6", key = "KP6" },
+  { label = "1", key = "KP1" }, { label = "2", key = "KP2" }, { label = "3", key = "KP3" },
+  { label = "0", key = "KP0" }, { label = ".", key = "KPDOT" },
+  { icon = "\U000F0311", key = "KPENTER", fg = "accent" },
+]

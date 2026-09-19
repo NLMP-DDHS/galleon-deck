@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Galleon Deck
+GenericName=Stream Deck Configurator
+Comment=Customize the Stream Deck on the Corsair Galleon 100 SD keyboard
+Exec=galleon-deck-config
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=stream;deck;galleon;corsair;elgato;keyboard;macro;
+StartupNotify=true

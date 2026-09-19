@@ -1,0 +1,7 @@
+# galleon-deck: let the logged-in user drive the Corsair Galleon 100 SD's
+# built-in Stream Deck (1b1c:2b18) and create the virtual keyboard it types
+# numpad keys and shortcuts with. udev leaves both root-only by default.
+#
+# Sorts before 73-seat-late.rules, which is what applies the uaccess ACL.
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="2b18", MODE="0660", TAG+="uaccess"
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Configurator for galleon-deck (GTK4 + libadwaita).
+here=$(dirname "$(readlink -f "$0")")
+for src in "$here/../src" "$here/../share/galleon-deck" "${XDG_DATA_HOME:-$HOME/.local/share}/galleon-deck"; do
+    [ -f "$src/galleon_deck_config.py" ] && exec python3 "$src/galleon_deck_config.py" "$@"
+done
+echo "galleon-deck-config: can't find galleon_deck_config.py" >&2
+exit 1

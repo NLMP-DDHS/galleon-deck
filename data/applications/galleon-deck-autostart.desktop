@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Galleon Deck service
+Comment=Stream Deck support for the Corsair Galleon 100 SD (used when systemd isn't available)
+Exec=galleon-deck
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,51 @@
+# Desktop profile: a numpad by default, plus apps and media pages.
+
+theme = "amber"
+start_page = "numpad"
+
+[[page]]
+name = "numpad"
+keys = [
+  { label = "7", key = "KP7" }, { label = "8", key = "KP8" }, { label = "9", key = "KP9" },
+  { label = "4", key = "KP4" }, { label = "5", key = "KP5" }, { label = "6", key = "KP6" },
+  { label = "1", key = "KP1" }, { label = "2", key = "KP2" }, { label = "3", key = "KP3" },
+  { label = "0", key = "KP0" }, { label = ".", key = "KPDOT" },
+  { icon = "\U000F0311", key = "KPENTER", fg = "accent" },
+]
+
+[[page]]
+name = "numpad ops"
+keys = [
+  { label = "/", key = "KPSLASH" }, { label = "*", key = "KPASTERISK" }, { label = "-", key = "KPMINUS" },
+  { label = "+", key = "KPPLUS" }, { label = "=", key = "KPEQUAL" }, { label = "BKSP", key = "BACKSPACE" },
+  { label = "DEL", key = "DELETE" }, {}, {},
+  {}, {},
+  { icon = "\U000F004D", label = "numpad", page = "numpad", fg = "accent" },
+]
+
+[[page]]
+name = "apps"
+keys = [
+  { icon = "", label = "Terminal", exec = 'for t in "$TERMINAL" kitty alacritty foot wezterm ghostty konsole gnome-terminal xfce4-terminal xterm; do command -v "$t" >/dev/null && exec "$t"; done' },
+  { icon = "", label = "Files", exec = "xdg-open ~" },
+  { icon = "\U000F059F", label = "Browser", exec = "xdg-open https://" },
+  { icon = "", label = "Steam", exec = "steam" },
+  { icon = "\U000F066F", label = "Discord", exec = "discord" },
+  {}, {}, {}, {},
+  {}, {},
+  { icon = "\U000F004D", label = "back", page = "back", fg = "accent" },
+]
+
+[[page]]
+name = "media"
+keys = [
+  { icon = "\U000F04AE", label = "Prev", media = "previous" },
+  { icon = "\U000F040E", label = "Play", media = "play-pause" },
+  { icon = "\U000F04AD", label = "Next", media = "next" },
+  { icon = "\U000F04DB", label = "Stop", media = "stop" },
+  { icon = "\U000F036D", label = "Mic", exec = "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle 2>/dev/null || pactl set-source-mute @DEFAULT_SOURCE@ toggle" },
+  {},
+  {}, {}, {},
+  {}, {},
+  { icon = "\U000F004D", label = "back", page = "back", fg = "accent" },
+]

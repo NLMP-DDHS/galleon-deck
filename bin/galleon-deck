@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stream Deck service for the Corsair Galleon 100 SD. Resolves its install
+# location through symlinks so it works from ~/.local/bin or a git checkout.
+here=$(dirname "$(readlink -f "$0")")
+for src in "$here/../src" "$here/../share/galleon-deck" "${XDG_DATA_HOME:-$HOME/.local/share}/galleon-deck"; do
+    [ -f "$src/galleon_deck.py" ] && exec python3 "$src/galleon_deck.py" "$@"
+done
+echo "galleon-deck: can't find galleon_deck.py" >&2
+exit 1
