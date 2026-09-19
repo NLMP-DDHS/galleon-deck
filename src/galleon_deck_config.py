@@ -90,20 +90,8 @@ def service_running():
         return False
 
 
-def addon_tool(config):
-    """The galleon-addon script: from the add-ons folder chosen in the app, or on PATH."""
-    folder = config.get("addons", {}).get("dir")
-    if folder:
-        path = os.path.join(os.path.expanduser(folder), "galleon-addon")
-        if os.path.isfile(path):
-            return path
-    linked = os.path.expanduser("~/.local/bin/galleon-addon")  # where it links itself; often not on an app's PATH
-    return shutil.which("galleon-addon") or (linked if os.path.isfile(linked) else None)
-
-
-def addon_env():
-    """Run galleon-addon against this copy of galleon-deck, whichever is on PATH."""
-    return {**os.environ, "GALLEON_DECK_SRC": os.path.dirname(os.path.realpath(gd.__file__))}
+ADDON_TOOL = [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), "galleon_addon.py")]
+ADDONS_URL = "https://github.com/NLMP-DDHS/galleon-deck-addons/releases"
 
 
 def restart_service():
@@ -1148,29 +1136,42 @@ class Window(Adw.ApplicationWindow):
     def build_addons_page(self, fetch=False):
         page = self.addons_page
         self.clear_page(page)
-        tool = addon_tool(self.model.config)
-        g = Adw.PreferencesGroup(title="Add-ons", description="Ready-made profiles for games, with their own themes, "
-                                 "keys and auto-switch rules. Installing one adds its profile; removing it takes the "
-                                 "profile away again and backs it up.")
-        buttons = Gtk.Box(spacing=6)
-        folder = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
-                            tooltip_text="Choose the galleon-deck-addons folder")
-        folder.connect("clicked", lambda _b: self.choose_addons_folder())
+        g = Adw.PreferencesGroup(title="Add-ons", description="Optional extras, each a separate download: a profile "
+                                 "for a game with its own themes, keys and auto-switch rule.")
+        self.add_group(page, g)
+        row = Adw.ActionRow(title="Install an add-on", subtitle="A package (.tar.gz) you downloaded")
+        install = Gtk.Button(label="Install from file…", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+        install.connect("clicked", lambda b: self.install_addon_file(b))
+        row.add_suffix(install)
+        g.add(row)
+        row = Adw.ActionRow(title="Get add-ons", subtitle="The download page, in your browser", activatable=True)
+        row.add_suffix(Gtk.Image(icon_name="adw-external-link-symbolic"))
+        row.connect("activated", lambda _r: Gio.AppInfo.launch_default_for_uri(ADDONS_URL, None))
+        g.add(row)
+
+        mine = Adw.PreferencesGroup(title="Your add-ons")
         reload = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
                             tooltip_text="Look for add-ons again")
         reload.connect("clicked", lambda _b: self.build_addons_page(fetch=True))
-        buttons.append(folder)
-        buttons.append(reload)
-        g.set_header_suffix(buttons)
-        self.add_group(page, g)
-        if not tool:
-            g.add(Adw.ActionRow(title="No add-ons folder yet", title_lines=0, subtitle_lines=0, use_markup=False,
-                                subtitle="Download the collection (git clone https://github.com/NLMP-DDHS/galleon-deck-addons) "
-                                         "and choose its folder with the folder button above."))
-            return
+        mine.set_header_suffix(reload)
+        self.add_group(page, mine)
+        dev = Adw.PreferencesGroup(title="Making add-ons")
+        folder = self.model.config.get("addons", {}).get("dir")
+        row = Adw.ActionRow(title="Add-on folder", use_markup=False,
+                            subtitle=folder or "Also list the add-ons in a folder of sources, e.g. a galleon-deck-addons checkout")
+        pick = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"], tooltip_text="Choose folder")
+        pick.connect("clicked", lambda _b: self.choose_addons_folder())
+        row.add_suffix(pick)
+        if folder:
+            clear = Gtk.Button(icon_name="edit-clear-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"], tooltip_text="Stop listing it")
+            clear.connect("clicked", lambda _b: (self.model.set("addons", "dir", None, remove=True), self.build_addons_page(fetch=True)))
+            row.add_suffix(clear)
+        dev.add(row)
+        self.add_group(page, dev)
+        g = mine
         if fetch or self.addons is None:
             try:
-                r = subprocess.run([tool, "list", "--json"], env=addon_env(), capture_output=True, text=True, timeout=30)
+                r = subprocess.run(ADDON_TOOL + ["list", "--json"], capture_output=True, text=True, timeout=30)
                 self.addons = json.loads(r.stdout) if r.returncode == 0 else (r.stderr.strip() or "galleon-addon failed")
             except (OSError, ValueError, subprocess.TimeoutExpired) as e:
                 self.addons = str(e)
@@ -1178,7 +1179,9 @@ class Window(Adw.ApplicationWindow):
             g.add(Adw.ActionRow(title="Couldn't list add-ons", subtitle=self.addons, subtitle_lines=0, use_markup=False))
             return
         if not self.addons:
-            g.add(Adw.ActionRow(title="No add-ons in this folder", subtitle=os.path.dirname(os.path.realpath(tool)), use_markup=False))
+            g.add(Adw.ActionRow(title="No add-ons installed", title_lines=0, subtitle_lines=0, use_markup=False,
+                                subtitle="Download one from the add-ons page (the globe button), then use "
+                                         "“Install from file…”."))
         for a in self.addons:
             if a["upgrade"]:
                 status = f"Installed {a['installed']} · {a['version']} available"
@@ -1215,7 +1218,7 @@ class Window(Adw.ApplicationWindow):
             g.add(row)
 
     def choose_addons_folder(self):
-        dialog = Gtk.FileDialog(title="Choose the galleon-deck-addons folder")
+        dialog = Gtk.FileDialog(title="Choose a folder of add-ons")
 
         def chosen(d, result):
             try:
@@ -1223,8 +1226,8 @@ class Window(Adw.ApplicationWindow):
             except GLib.Error:
                 return
             path = folder.get_path()
-            if not os.path.isfile(os.path.join(path, "galleon-addon")):
-                return self.toast("That folder has no galleon-addon script")
+            if not any(os.path.isfile(os.path.join(path, d, "addon.toml")) for d in os.listdir(path)):
+                return self.toast("No add-ons in that folder (each is a subfolder with an addon.toml)")
             self.model.set("addons", "dir", path)
             self.build_addons_page(fetch=True)
         dialog.select_folder(self, None, chosen)
@@ -1235,6 +1238,32 @@ class Window(Adw.ApplicationWindow):
             self.profile, self.page, self.key = name, 0, 0
             self.refresh_all()
             self.stack.set_visible_child_name("key")
+
+    def install_addon_file(self, button):
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        pkg = Gtk.FileFilter(name="Add-on packages (.tar.gz, .zip)")
+        for pattern in ("*.tar.gz", "*.tgz", "*.zip"):
+            pkg.add_pattern(pattern)
+        filters.append(pkg)
+        dialog = Gtk.FileDialog(title="Install an add-on", filters=filters, default_filter=pkg)
+        downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+        if downloads and os.path.isdir(downloads):
+            dialog.set_initial_folder(Gio.File.new_for_path(downloads))
+
+        def chosen(d, result):
+            try:
+                path = d.open_finish(result).get_path()
+            except GLib.Error:
+                return
+            before = {a["name"] for a in self.addons if a["installed"]} if isinstance(self.addons, list) else set()
+
+            def opened():  # show the profile of a newly installed add-on
+                fresh = [a for a in self.addons if a["installed"] and a["name"] not in before] \
+                    if isinstance(self.addons, list) else []
+                if fresh and fresh[0]["profiles"]:
+                    self.show_profile(fresh[0]["profiles"][0])
+            self.run_addon(button, ["install", path], f"Installed {os.path.basename(path)}", after=opened)
+        dialog.open(self, None, chosen)
 
     def install_addon(self, button, a):
         profiles = a.get("profiles", [])
@@ -1249,13 +1278,12 @@ class Window(Adw.ApplicationWindow):
 
     def run_addon(self, button, args, done_text, after=None, show_output=None):
         """Run galleon-addon in the background, then reload and report."""
-        tool = addon_tool(self.model.config)
         self.flush()
         button.set_sensitive(False)
 
         def work():
             try:
-                r = subprocess.run([tool] + args, env=addon_env(), capture_output=True, text=True, timeout=300)
+                r = subprocess.run(ADDON_TOOL + args, capture_output=True, text=True, timeout=300)
                 ok, out = r.returncode == 0, (r.stdout + r.stderr).strip()
             except (OSError, subprocess.TimeoutExpired) as e:
                 ok, out = False, str(e)

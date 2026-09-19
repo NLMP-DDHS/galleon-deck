@@ -18,10 +18,11 @@ Windows and macOS, so this project takes its place.
   i3, niri and X11 desktops).
 - **Themes:** 7 built-in themes, your own, or one **generated from your wallpaper**.
   Themes can use rounded keys or a sci-fi `hud` style with cut corners.
-- **Add-ons:** ready-made profiles for games, with their own themes and auto-switch
-  rules, from [galleon-deck-addons](https://github.com/NLMP-DDHS/galleon-deck-addons)
-  (Star Citizen so far). Install and remove them from the app's **Add-ons** tab or
-  with one command.
+- **Add-ons (optional):** ready-made profiles for games, with their own themes and
+  auto-switch rules. Each is a separate download from the
+  [add-on releases](https://github.com/NLMP-DDHS/galleon-deck-addons/releases)
+  (Star Citizen so far). Skip them if you don't need them; install the ones you want
+  from the app's **Add-ons** tab.
 - **Boot animation:** a CRT power-on effect, a terminal boot log, your logo glitching in,
   and keys that "decrypt" one by one. Plays at login and when the keyboard is plugged in.
   Your own GIF also works.
@@ -90,8 +91,10 @@ Open **Galleon Deck** from your app menu, or run `galleon-deck-config`:
 - **Look:** pick a theme, generate one from your wallpaper, or tweak single colours.
 - **Settings:** brightness, dial volume step, clock, boot animation, and auto-switch rules.
 - **Profiles and pages:** the menus next to them add, rename, reorder and delete.
-- **Add-ons:** install, upgrade and remove add-ons, and run their tools (like syncing
-  a game's keybinds). Point it at your `galleon-deck-addons` folder once.
+- **Add-ons:** **Install from file…** takes a downloaded add-on package (`.tar.gz`).
+  The tab then upgrades and removes add-ons and runs their tools, like syncing a
+  game's keybinds. From a terminal: `galleon-addon install ~/Downloads/star-citizen-1.0.0.tar.gz`,
+  `galleon-addon list`, `galleon-addon remove star-citizen`.
 
 The app follows the deck. It opens on the profile and page the deck is showing, and
 switches along when the deck changes, for example when a game takes focus. Pick
