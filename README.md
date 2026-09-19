@@ -6,6 +6,8 @@ Windows and macOS, so this project takes its place.
 
 ![The Galleon Deck configurator](docs/screenshot.png)
 
+📖 **[Read the wiki](https://github.com/NLMP-DDHS/galleon-deck/wiki)** for a full guide to the app, config files and troubleshooting.
+
 - **Profiles and pages** of 12 keys, like Elgato's app: icons, labels, images, colours.
 - **Key actions:** numpad keys, any key or shortcut, run a command (with an optional ✓/✗
   flash when it finishes), media controls, switch page, switch profile.
@@ -73,6 +75,8 @@ packages. `--no-root` prints the root commands instead of running them.
 `./uninstall.sh [--purge]` removes everything; `--purge` also removes your config.
 
 ## Use
+
+The [wiki](https://github.com/NLMP-DDHS/galleon-deck/wiki) covers every panel, key action and setting in detail.
 
 Open **Galleon Deck** from your app menu, or run `galleon-deck-config`:
 
