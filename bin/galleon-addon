@@ -1,0 +1,8 @@
+#!/bin/sh
+# Add-on manager for galleon-deck: install downloaded add-on packages, remove them.
+here=$(dirname "$(readlink -f "$0")")
+for src in "$here/../src" "$here/../share/galleon-deck" "${XDG_DATA_HOME:-$HOME/.local/share}/galleon-deck"; do
+    [ -f "$src/galleon_addon.py" ] && exec python3 "$src/galleon_addon.py" "$@"
+done
+echo "galleon-addon: can't find galleon_addon.py" >&2
+exit 1

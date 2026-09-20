@@ -4,7 +4,11 @@
 #
 #   config.toml          this file: global settings and auto-switching
 #   profiles/*.toml      one file per profile: its theme and pages of keys
-#   themes/*.toml        optional: your own themes, or overrides of built-in ones
+#   themes/*.toml        optional: your own themes, or overrides of built-in ones.
+#                        A theme sets bg, key_bg, fg, accent, dim, border, frame,
+#                        radius, border_width, font, clock_font, and optionally
+#                        key_style = "hud": cut corners with bright corner ticks
+#                        (colour `tick`), where radius is the size of the cut.
 #
 # Built-in themes: amber (the default), cyberpunk, synthwave, matrix, arctic,
 # hud, mono, plus "wallpaper", generated from your wallpaper (see below).
@@ -41,6 +45,9 @@ clock_format = "%H:%M"
 # desktops; GNOME and KDE on Wayland don't expose the focused window). Rules are
 # checked in order; `class` and `title` are regular expressions. A profile you
 # pick by hand stays until you focus something that maps elsewhere.
+# A profile can also carry its own rules, checked before these, with a
+# top-level `auto_switch = [{ class = "^mygame$" }]` in its file; add-ons use
+# that so their rule comes and goes with them.
 [auto_switch]
 fallback = "desktop"   # profile for windows no rule matches
 rules = [

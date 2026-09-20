@@ -115,11 +115,12 @@ mkdir -p "$BIN" "$DATA/applications"
 if [ "$DEV" = 1 ]; then
     ln -sfn "$REPO/bin/galleon-deck" "$BIN/galleon-deck"
     ln -sfn "$REPO/bin/galleon-deck-config" "$BIN/galleon-deck-config"
+    ln -sfn "$REPO/bin/galleon-addon" "$BIN/galleon-addon"
 else
     mkdir -p "$DATA/galleon-deck"
     install -m644 "$REPO"/src/*.py "$DATA/galleon-deck/"
-    rm -f "$BIN/galleon-deck" "$BIN/galleon-deck-config"
-    install -m755 "$REPO/bin/galleon-deck" "$REPO/bin/galleon-deck-config" "$BIN/"
+    rm -f "$BIN/galleon-deck" "$BIN/galleon-deck-config" "$BIN/galleon-addon"
+    install -m755 "$REPO/bin/galleon-deck" "$REPO/bin/galleon-deck-config" "$REPO/bin/galleon-addon" "$BIN/"
 fi
 install -m644 "$REPO/data/applications/io.github.galleondeck.Config.desktop" "$DATA/applications/"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DATA/applications" 2>/dev/null || true
