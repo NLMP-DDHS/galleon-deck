@@ -893,8 +893,8 @@ class Window(Adw.ApplicationWindow):
                                  description="Switch profile by the focused window's class (a regular expression). "
                                              + ("Following window focus on " + {"hyprland": "Hyprland", "sway": "Sway", "i3": "i3", "niri": "niri",
                                                                                 "x11": "X11"}[gd.focus_source()] + "." if gd.focus_source() else
-                                                "Not available on this desktop: GNOME and KDE on Wayland don't expose the "
-                                                "focused window. Works on Hyprland, Sway, i3, niri and X11 desktops."))
+                                                "Not available on this desktop yet: GNOME and KDE Plasma under Wayland "
+                                                "aren't supported. Works on Hyprland, Sway, i3, niri and X11 desktops."))
         add = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"], tooltip_text="Add rule")
         add.connect("clicked", lambda _b: self.add_rule())
         a.set_header_suffix(add)
