@@ -845,6 +845,13 @@ class Window(Adw.ApplicationWindow):
         tspeed.set_value(t.get("speed", 1.0))
         tspeed.connect("notify::value", lambda r, _p: self.debounce("tspeed", lambda: self.model.set("transition", "speed", round(r.get_value(), 2))))
         tg.add(tspeed)
+        thold = Adw.SpinRow.new_with_range(0.0, 3.0, 0.1)
+        thold.set_digits(1)
+        thold.set_title("Hold the logo")
+        thold.set_subtitle("Seconds it stays up once it has resolved")
+        thold.set_value(t.get("hold", 0.5))
+        thold.connect("notify::value", lambda r, _p: self.debounce("thold", lambda: self.model.set("transition", "hold", round(r.get_value(), 1))))
+        tg.add(thold)
 
         boot = cfg.get("boot", {})
         b = Adw.PreferencesGroup(title="Boot animation", description="Plays at login and whenever the keyboard is plugged in.")

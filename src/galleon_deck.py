@@ -1454,30 +1454,43 @@ class App:
             return
         speed = max(0.25, min(4.0, float(settings.get("speed", 1.0))))
         frames = max(2, round(9 / speed))
+        hold = max(0.0, min(3.0, float(settings.get("hold", 0.5)))) / speed
         theme, rng = self.theme, random.Random()
         keys = [self.key_image(i) for i in range(KEYS)]
         logo = load_logo(self.prof().get("logo"), theme, self.profile.upper())
+        def screen_at(done):
+            screen = Image.new("RGB", (LCD_W, LCD_H), theme["bg"]).convert("RGBA")
+            layer = Image.new("RGBA", (LCD_W, LCD_H), (0, 0, 0, 0))
+            layer.paste(logo, ((LCD_W - logo.width) // 2, (LCD_H - logo.height) // 2), logo)
+            layer.putalpha(layer.getchannel("A").point(lambda v: int(v * min(1, done * 1.6))))
+            screen.alpha_composite(layer)
+            screen = screen.convert("RGB")
+            d = ImageDraw.Draw(screen)
+            if theme.get("key_style") == "hud":
+                draw_frame(d, [4, 4, LCD_W - 5, LCD_H - 5], {**theme, "radius": 28},
+                           colour(theme.get("frame", "accent"), theme), 3)
+            else:
+                d.rectangle([4, 4, LCD_W - 5, LCD_H - 5], outline=colour(theme.get("frame", "accent"), theme), width=3)
+            return screen
+
+        def waited(seconds):
+            """Sleep, unless a key or dial arrives: then the animation is over."""
+            return bool(select.select([self.deck.fd], [], [], max(0.0, seconds))[0])
+
         try:
             for f in range(frames):
                 done = (f + 1) / frames
                 amount = (1 - done) ** 1.5
-                screen = Image.new("RGB", (LCD_W, LCD_H), theme["bg"]).convert("RGBA")
-                layer = Image.new("RGBA", (LCD_W, LCD_H), (0, 0, 0, 0))
-                layer.paste(logo, ((LCD_W - logo.width) // 2, (LCD_H - logo.height) // 2), logo)
-                layer.putalpha(layer.getchannel("A").point(lambda v: int(v * min(1, done * 1.6))))
-                screen.alpha_composite(layer)
-                screen = screen.convert("RGB")
-                d = ImageDraw.Draw(screen)
-                if theme.get("key_style") == "hud":
-                    draw_frame(d, [4, 4, LCD_W - 5, LCD_H - 5], {**theme, "radius": 28},
-                               colour(theme.get("frame", "accent"), theme), 3)
-                else:
-                    d.rectangle([4, 4, LCD_W - 5, LCD_H - 5], outline=colour(theme.get("frame", "accent"), theme), width=3)
-                self.deck.lcd_image(jpeg(glitch(screen, rng, amount)))
+                self.deck.lcd_image(jpeg(glitch(screen_at(done), rng, amount)))
                 for i, img in enumerate(keys):
                     self.deck.key_image(i, jpeg(glitch(img, rng, amount)))
-                if select.select([self.deck.fd], [], [], max(0.0, 0.05 / speed))[0]:
-                    break  # a key or dial: cut it short, the press itself still counts
+                if waited(0.05 / speed):
+                    break  # the press itself still counts
+            else:
+                self.draw_keys()  # keys first, so the clean logo holds alone for a beat
+                if hold:
+                    self.deck.lcd_image(jpeg(screen_at(1.0)))
+                    waited(hold)
         except OSError as e:
             log(f"transition: {e}")
         self.draw_keys()
