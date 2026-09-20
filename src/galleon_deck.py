@@ -1169,11 +1169,11 @@ def _lines(argv):
 
 def focus_events(callback):
     """Call callback(class, title) whenever window focus changes. Supported:
-    Hyprland, Sway, i3, niri, and X11 desktops. GNOME and KDE on Wayland don't
-    expose the focused window, so auto-switching is off there."""
+    Hyprland, Sway, i3, niri, and X11 desktops. GNOME and KDE Plasma under
+    Wayland aren't supported yet, so auto-switching is off there."""
     source = focus_source()
     if not source:
-        log("auto-switch: this desktop doesn't expose window focus; switch profiles by key or dial")
+        log("auto-switch: no window focus source for this desktop; switch profiles by key or dial")
         return
     while True:
         try:

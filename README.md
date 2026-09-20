@@ -50,7 +50,7 @@ Some features depend on the desktop:
 
 | Feature | Where it works |
 |---|---|
-| Auto-switch profiles by focused window | Hyprland, Sway, i3, niri, any X11 session. Not GNOME/KDE on Wayland: they don't expose the focused window. |
+| Auto-switch profiles by focused window | Hyprland, Sway, i3, niri, any X11 session. Not yet on GNOME or KDE Plasma under Wayland ([#3](https://github.com/NLMP-DDHS/galleon-deck/issues/3)). |
 | NumLock handled for the deck's numpad | Hyprland and X11. Elsewhere your desktop's NumLock applies (keep it on). |
 | Wallpaper detection | noctalia, swww, hyprpaper, GNOME. For anything else, set `command` under `[wallpaper_theme]`. |
 | Now-playing on the top screen | Any player that supports MPRIS (needs `playerctl`) |
