@@ -747,6 +747,21 @@ class Window(Adw.ApplicationWindow):
                              selected=names.index(data["start_page"]) if data.get("start_page") in names else 0)
         start.connect("notify::selected", lambda r, _p: self.set_profile_field("start_page", names[r.get_selected()]))
         pg.add(start)
+        lg = Adw.PreferencesGroup(title="Profile logo", description="Shown on the top screen when the deck switches "
+                                  "to this profile. Without one, the profile's name is used.")
+        self.add_group(page, lg)
+        logo = data.get("logo")
+        row = Adw.ActionRow(title="Logo (a transparent PNG works best)", subtitle=logo or "The profile's name", use_markup=False)
+        choose = Gtk.Button(label="Choose…", valign=Gtk.Align.CENTER)
+        choose.connect("clicked", lambda _b, r=row: self.pick_file(
+            "Choose a logo", ["image/png", "image/webp", "image/jpeg"],
+            lambda path, r=r: (self.set_profile_field("logo", path), r.set_subtitle(path))))
+        clear = Gtk.Button(icon_name="edit-clear-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
+        clear.connect("clicked", lambda _b, r=row: (self.set_profile_field("logo", None), r.set_subtitle("The profile's name")))
+        row.add_suffix(choose)
+        row.add_suffix(clear)
+        lg.add(row)
+
         sp = Adw.SwitchRow(title="Settings page", subtitle="The generated last page: themes, brightness, profiles",
                            active=data.get("settings_page", True))
         sp.connect("notify::active", lambda r, _p: self.set_profile_field("settings_page", r.get_active()))
@@ -814,6 +829,22 @@ class Window(Adw.ApplicationWindow):
                              selected=names.index(cfg["start_profile"]) if cfg.get("start_profile") in names else 0)
         start.connect("notify::selected", lambda r, _p: self.model.set(None, "start_profile", names[r.get_selected()]))
         g.add(start)
+
+        t = cfg.get("transition", {})
+        tg = Adw.PreferencesGroup(title="Profile switch", description="A short glitch when the deck changes profile: "
+                                  "the new profile's logo resolves on the top screen while its keys come out of the "
+                                  "interference. Set each profile's logo under Look.")
+        self.add_group(page, tg)
+        on = Adw.SwitchRow(title="Animate", active=t.get("enabled", True))
+        on.connect("notify::active", lambda r, _p: self.model.set("transition", "enabled", r.get_active()))
+        tg.add(on)
+        tspeed = Adw.SpinRow.new_with_range(0.25, 4.0, 0.25)
+        tspeed.set_digits(2)
+        tspeed.set_title("Speed")
+        tspeed.set_subtitle("1.0 is about half a second")
+        tspeed.set_value(t.get("speed", 1.0))
+        tspeed.connect("notify::value", lambda r, _p: self.debounce("tspeed", lambda: self.model.set("transition", "speed", round(r.get_value(), 2))))
+        tg.add(tspeed)
 
         boot = cfg.get("boot", {})
         b = Adw.PreferencesGroup(title="Boot animation", description="Plays at login and whenever the keyboard is plugged in.")
