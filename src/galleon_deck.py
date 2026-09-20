@@ -28,6 +28,7 @@ import glob
 import io
 import json
 import os
+import random
 import re
 import select
 import signal
@@ -569,6 +570,52 @@ def _blend(a, b, t):
     return tuple(round(x + (y - x) * t) for x, y in zip(ca, cb))
 
 
+def config_path(path):
+    """A path from the config: absolute, ~, or relative to the config folder."""
+    path = os.path.expanduser(str(path))
+    return path if os.path.isabs(path) else os.path.join(CONFIG_DIR, path)
+
+
+def load_logo(path, theme, fallback, box=(LCD_W - 60, LCD_H - 80)):
+    """A logo image trimmed to its content, or `fallback` drawn as a text logo."""
+    if path:
+        try:
+            img = Image.open(config_path(path)).convert("RGBA")
+            img = img.crop(img.getchannel("A").getbbox() or (0, 0, *img.size))
+            img.thumbnail(box)
+            return img
+        except OSError as e:
+            log(f"logo {path}: {e}")
+    img = Image.new("RGBA", box, (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    text = str(fallback).strip() or "GALLEON DECK"
+    d.text((img.width // 2, img.height // 2), text, font=fit(d, text, theme["clock_font"], 90, img.width - 20),
+           fill=theme["fg"], anchor="mm")
+    return img
+
+
+def glitch(img, rng, amount):
+    """Digital interference: bands slide sideways, the colour channels separate,
+    and now and then the whole frame flares. amount 0 leaves the image alone."""
+    if amount <= 0.02:
+        return img
+    w, h = img.size
+    out = Image.new("RGB", (w, h), (0, 0, 0))
+    y = 0
+    while y < h:
+        band = rng.randint(max(2, h // 20), max(3, h // 5))
+        dx = int(rng.uniform(-w * 0.25, w * 0.25) * amount) if rng.random() < 0.55 else 0
+        out.paste(img.crop((0, y, w, y + band)), (dx, y))
+        y += band
+    r, g, b = out.split()
+    r = r.transform(r.size, Image.AFFINE, (1, 0, -int(w * 0.05 * amount), 0, 1, 0))
+    b = b.transform(b.size, Image.AFFINE, (1, 0, int(w * 0.03 * amount), 0, 1, 0))
+    out = Image.merge("RGB", (r, g, b))
+    if rng.random() < 0.3 * amount:
+        out = Image.eval(out, lambda v: min(255, int(v * 1.5) + 20))
+    return out
+
+
 CIPHER = "0123456789ABCDEF#$%&*+=/<>?!"
 
 
@@ -710,20 +757,7 @@ def boot_frames(theme, boot, footer, real_keys, speed=1.0):
         kf += 1
 
     # 3. Logo glitches in; the keys start decrypting.
-    logo = None
-    if boot.get("logo"):
-        try:
-            logo = Image.open(os.path.expanduser(boot["logo"])).convert("RGBA")
-            logo = logo.crop(logo.getchannel("A").getbbox() or (0, 0, *logo.size))
-            logo.thumbnail((LCD_W - 60, LCD_H - 80))
-        except OSError as e:
-            log(f"boot logo: {e}")
-    if logo is None:  # no logo image: use the title as a text logo
-        logo = Image.new("RGBA", (LCD_W - 60, LCD_H - 110), (0, 0, 0, 0))
-        d = ImageDraw.Draw(logo)
-        name = title.split("//")[0].strip() or title
-        d.text((logo.width // 2, logo.height // 2), name, font=fit(d, name, theme["clock_font"], 90, logo.width - 20),
-               fill=fg, anchor="mm")
+    logo = load_logo(boot.get("logo"), theme, title.split("//")[0].strip() or title)
     keys.start = kf
     n = frames(36)
     for f in range(n):
@@ -1046,7 +1080,7 @@ def write_profile(path, profile):
     while head and not head[-1].strip():
         head.pop()
     out = head + [""] if head else []
-    for key in ("theme", "start_page"):
+    for key in ("theme", "start_page", "logo"):
         if profile.get(key):
             out.append(f"{key} = {toml_value(profile[key])}")
     if profile.get("settings_page") is False:
@@ -1345,9 +1379,9 @@ class App:
         for i in range(KEYS):
             self.draw_key(i)
 
-    def draw_lcd(self):
+    def lcd_state(self):
         now = time.localtime()
-        state = {
+        return {
             "profile": self.profile or "galleon-deck",
             "page": self.pages()[self.page]["name"],
             "page_index": self.page,
@@ -1358,6 +1392,9 @@ class App:
             "error": self.error,
             "theme": self.prof()["theme_name"] if self.cfg else "",
         }
+
+    def draw_lcd(self):
+        state = self.lcd_state()
         status = cmd_output(["playerctl", "status"]) if shutil_which("playerctl") else ""
         if status in ("Playing", "Paused"):
             state["media"] = cmd_output(["playerctl", "metadata", "--format", "{{artist}} — {{title}}"]).strip(" —")
@@ -1402,9 +1439,62 @@ class App:
         self.page = self.start_page_index()
         self.history.clear()
         log(f"profile: {name}")
-        if self.deck:
-            self.draw_keys()
+        self.transition()
         self.lcd_dirty = True
+
+    def transition(self):
+        """The profile switch: the new profile's logo resolves on the screen out of
+        interference while its keys do the same. `logo` in the profile file sets the
+        image; without one the profile's name is the logo. Any key or dial skips it."""
+        if not self.deck:
+            return
+        settings = self.cfg.get("transition", {}) if self.cfg else {}
+        if not settings.get("enabled", True):
+            self.draw_keys()
+            return
+        speed = max(0.25, min(4.0, float(settings.get("speed", 1.0))))
+        frames = max(2, round(9 / speed))
+        hold = max(0.0, min(3.0, float(settings.get("hold", 0.5)))) / speed
+        theme, rng = self.theme, random.Random()
+        keys = [self.key_image(i) for i in range(KEYS)]
+        logo = load_logo(self.prof().get("logo"), theme, self.profile.upper())
+        def screen_at(done):
+            screen = Image.new("RGB", (LCD_W, LCD_H), theme["bg"]).convert("RGBA")
+            layer = Image.new("RGBA", (LCD_W, LCD_H), (0, 0, 0, 0))
+            layer.paste(logo, ((LCD_W - logo.width) // 2, (LCD_H - logo.height) // 2), logo)
+            layer.putalpha(layer.getchannel("A").point(lambda v: int(v * min(1, done * 1.6))))
+            screen.alpha_composite(layer)
+            screen = screen.convert("RGB")
+            d = ImageDraw.Draw(screen)
+            if theme.get("key_style") == "hud":
+                draw_frame(d, [4, 4, LCD_W - 5, LCD_H - 5], {**theme, "radius": 28},
+                           colour(theme.get("frame", "accent"), theme), 3)
+            else:
+                d.rectangle([4, 4, LCD_W - 5, LCD_H - 5], outline=colour(theme.get("frame", "accent"), theme), width=3)
+            return screen
+
+        def waited(seconds):
+            """Sleep, unless a key or dial arrives: then the animation is over."""
+            return bool(select.select([self.deck.fd], [], [], max(0.0, seconds))[0])
+
+        try:
+            for f in range(frames):
+                done = (f + 1) / frames
+                amount = (1 - done) ** 1.5
+                self.deck.lcd_image(jpeg(glitch(screen_at(done), rng, amount)))
+                for i, img in enumerate(keys):
+                    self.deck.key_image(i, jpeg(glitch(img, rng, amount)))
+                if waited(0.05 / speed):
+                    break  # the press itself still counts
+            else:
+                self.draw_keys()  # keys first, so the clean logo holds alone for a beat
+                if hold:
+                    self.deck.lcd_image(jpeg(screen_at(1.0)))
+                    waited(hold)
+        except OSError as e:
+            log(f"transition: {e}")
+        self.draw_keys()
+        self.last_lcd, self.lcd_dirty = None, True
 
     def set_theme(self, name):
         """Persist the theme into the profile file; the reload applies it."""

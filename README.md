@@ -23,6 +23,8 @@ Windows and macOS, so this project takes its place.
   [add-on releases](https://github.com/NLMP-DDHS/galleon-deck-addons/releases)
   (Star Citizen so far). Skip them if you don't need them; install the ones you want
   from the app's **Add-ons** tab.
+- **Profile switch:** a short glitch as the deck changes profile, with the new
+  profile's logo (or its name) resolving on the top screen.
 - **Boot animation:** a CRT power-on effect, a terminal boot log, your logo glitching in,
   and keys that "decrypt" one by one. Plays at login and when the keyboard is plugged in.
   Your own GIF also works.

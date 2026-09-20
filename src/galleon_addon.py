@@ -279,13 +279,13 @@ def cmd_install(what, force=False):
         raise AddonError("these files already exist and aren't from this add-on:\n  " + "\n  ".join(clashes)
                          + "\nRename them, or pass --force to back them up and replace them.")
 
-    # Upgrades keep the theme you picked for each profile.
+    # Upgrades keep the theme and logo you picked for each profile.
     kept = {}
     for _, dst in plan:
         if os.path.dirname(dst) == gd.PROFILE_DIR and os.path.isfile(dst):
             with open(dst, "rb") as f:
                 old = tomllib.load(f)
-            kept[dst] = {k: old[k] for k in ("theme", "theme_overrides") if k in old}
+            kept[dst] = {k: old[k] for k in ("theme", "theme_overrides", "logo") if k in old}
     saved = backup(name, [dst for _, dst in plan if os.path.dirname(dst) == gd.PROFILE_DIR] + clashes)
 
     for src, dst in plan:
@@ -296,6 +296,8 @@ def cmd_install(what, force=False):
     for dst, fields in kept.items():
         if fields.get("theme") in themes:
             gd.set_top_level(dst, "theme", fields["theme"])
+        if fields.get("logo"):
+            gd.set_top_level(dst, "logo", fields["logo"])
         for key, value in fields.get("theme_overrides", {}).items():
             gd.set_value(dst, "theme_overrides", key, value)
 

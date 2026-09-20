@@ -54,6 +54,15 @@ rules = [
   { class = "^(steam_app_.*|gamescope)$", profile = "gaming" },
 ]
 
+# Profile switch: a short glitch, the new profile's logo resolving on the top
+# screen while its keys come out of the interference. Any key or dial skips it.
+# The logo is the profile's own `logo = "pictures/org.png"` (relative to this
+# folder, or an absolute path); without one, the profile's name is the logo.
+[transition]
+enabled = true
+speed = 1.0                        # 2.0 = twice as fast, 0.5 = half speed
+hold = 0.5                         # seconds the logo stays up once it has resolved
+
 # Boot animation: plays when you log in and whenever the keyboard is plugged
 # in; any key or dial skips it. Uses the start profile's theme.
 [boot]
