@@ -4,6 +4,8 @@ Stream Deck support on Linux for the **Corsair Galleon 100 SD** keyboard: the 12
 keys, the top screen, and the two dials. Elgato's Stream Deck software only runs on
 Windows and macOS, so this project takes its place.
 
+<p align="center"><img src="docs/deck.gif" width="396" alt="The deck booting, then switching to the Star Citizen profile when the game takes focus"></p>
+
 ![The Galleon Deck configurator](docs/screenshot.png)
 
 📖 **[Read the wiki](https://github.com/NLMP-DDHS/galleon-deck/wiki)** for a full guide to the app, config files and troubleshooting.
@@ -61,6 +63,22 @@ Developed and tested on CachyOS with Hyprland. Other distros and desktops are
 supported by design but less tested. Reports and pull requests are welcome.
 
 ## Install
+
+**Arch/CachyOS/Manjaro:** build the package in `packaging/arch`, then start the service
+for your user:
+
+```sh
+git clone https://github.com/NLMP-DDHS/galleon-deck
+cd galleon-deck/packaging/arch
+makepkg -si
+systemctl --user enable --now galleon-deck
+```
+
+The package builds from the latest commit on GitHub, so run `makepkg -si` again to
+update. pacman removes it like any other package (`sudo pacman -R galleon-deck-git`).
+If you used `./install.sh` before, run `./uninstall.sh` first.
+
+**Other distros**, or to run from a checkout:
 
 ```sh
 git clone https://github.com/NLMP-DDHS/galleon-deck

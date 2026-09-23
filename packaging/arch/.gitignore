@@ -1,0 +1,4 @@
+src/
+pkg/
+galleon-deck/
+*.pkg.tar.*
