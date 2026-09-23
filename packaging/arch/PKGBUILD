@@ -1,0 +1,46 @@
+# Maintainer: JustMrJ <ddhs-nlmp@proton.me>
+pkgname=galleon-deck-git
+_pkgname=galleon-deck
+pkgver=1.1.0.r6.g5fa4674
+pkgrel=1
+pkgdesc="Stream Deck support for the Corsair Galleon 100 SD keyboard: LCD keys, top screen, dials, per-game profiles"
+arch=('any')
+url="https://github.com/NLMP-DDHS/galleon-deck"
+license=('MIT')
+depends=('python' 'python-pillow' 'python-evdev' 'python-gobject' 'gtk4' 'libadwaita'
+         'ttf-nerd-fonts-symbols' 'ttf-jetbrains-mono')
+makedepends=('git')
+optdepends=('python-fonttools: icon search in the configurator'
+            'playerctl: now-playing on the top screen and media keys'
+            'libnotify: desktop notifications'
+            'wireplumber: volume dial (PipeWire)'
+            'libpulse: volume dial (PulseAudio)')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+install=galleon-deck.install
+source=("git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_pkgname"
+  git describe --long --tags --abbrev=7 | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+package() {
+  cd "$_pkgname"
+  install -Dm644 -t "$pkgdir/usr/share/$_pkgname" src/*.py
+  cp -r examples "$pkgdir/usr/share/$_pkgname/examples"
+  install -Dm755 -t "$pkgdir/usr/bin" bin/galleon-deck bin/galleon-deck-config bin/galleon-addon
+
+  install -Dm644 data/applications/io.github.galleondeck.Config.desktop \
+    "$pkgdir/usr/share/applications/io.github.galleondeck.Config.desktop"
+  install -Dm644 data/udev/71-galleon-deck.rules "$pkgdir/usr/lib/udev/rules.d/71-galleon-deck.rules"
+  install -dm755 "$pkgdir/usr/lib/modules-load.d"
+  echo uinput > "$pkgdir/usr/lib/modules-load.d/galleon-deck.conf"
+  sed 's|^ExecStart=.*|ExecStart=/usr/bin/galleon-deck|' data/systemd/galleon-deck.service \
+    | install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/galleon-deck.service"
+
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
+  install -Dm644 docs/PROTOCOL.md "$pkgdir/usr/share/doc/$_pkgname/PROTOCOL.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

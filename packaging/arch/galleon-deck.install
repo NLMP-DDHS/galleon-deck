@@ -1,0 +1,26 @@
+post_install() {
+  modprobe uinput 2>/dev/null || true
+  udevadm control --reload 2>/dev/null || true
+  udevadm trigger --subsystem-match=hidraw --subsystem-match=misc 2>/dev/null || true
+  cat <<'MSG'
+==> Start the service for your user (not as root):
+      systemctl --user enable --now galleon-deck
+    A starter config is created in ~/.config/galleon-deck on first run.
+    Open "Galleon Deck" from your app menu to customize the keys.
+==> If the deck keeps its own numpad screen, replug the keyboard so the
+    udev rule applies.
+==> If you used install.sh before, run its uninstall.sh first: files in
+    ~/.config/systemd/user and ~/.local/bin override this package.
+==> Optional: the default theme uses the Quantico font (Google Fonts);
+    without it the theme falls back to another font.
+MSG
+}
+
+post_upgrade() {
+  udevadm control --reload 2>/dev/null || true
+  echo "==> Restart the service to load the new version: systemctl --user restart galleon-deck"
+}
+
+post_remove() {
+  udevadm control --reload 2>/dev/null || true
+}

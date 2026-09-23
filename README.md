@@ -64,13 +64,19 @@ supported by design but less tested. Reports and pull requests are welcome.
 
 ## Install
 
-**Arch/CachyOS/Manjaro:** install [`galleon-deck-git`](https://aur.archlinux.org/packages/galleon-deck-git)
-from the AUR, then start the service for your user:
+**Arch/CachyOS/Manjaro:** build the package in `packaging/arch`, then start the service
+for your user:
 
 ```sh
-paru -S galleon-deck-git
+git clone https://github.com/NLMP-DDHS/galleon-deck
+cd galleon-deck/packaging/arch
+makepkg -si
 systemctl --user enable --now galleon-deck
 ```
+
+The package builds from the latest commit on GitHub, so run `makepkg -si` again to
+update. pacman removes it like any other package (`sudo pacman -R galleon-deck-git`).
+If you used `./install.sh` before, run `./uninstall.sh` first.
 
 **Other distros**, or to run from a checkout:
 
