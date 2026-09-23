@@ -1396,7 +1396,7 @@ class App(Adw.Application):
 
 
 def main():
-    if not os.path.exists(gd.CONFIG_PATH):
+    if not gd.ensure_config():
         print(f"No config at {gd.CONFIG_PATH}; run the installer first.", file=sys.stderr)
         sys.exit(1)
     sys.exit(App().run(sys.argv))

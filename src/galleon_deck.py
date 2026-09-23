@@ -31,6 +31,7 @@ import os
 import random
 import re
 import select
+import shutil
 import signal
 import socket
 import subprocess
@@ -1119,6 +1120,20 @@ def validate_pages(pages, where):
                     Keyboard.codes(k[field])  # validate now, not on first press
 
 
+def ensure_config():
+    """Copy the example config into place on first run, for installs (like a distro
+    package) that don't run install.sh. Returns False if there is none to copy."""
+    if os.path.exists(CONFIG_PATH):
+        return True
+    here = os.path.dirname(os.path.realpath(__file__))
+    for examples in (os.path.join(here, "..", "examples"), os.path.join(here, "examples")):
+        if os.path.isfile(os.path.join(examples, "config.toml")):
+            shutil.copytree(examples, CONFIG_DIR, dirs_exist_ok=True)
+            log(f"created a starter config in {CONFIG_DIR}")
+            return True
+    return False
+
+
 def load_config():
     with open(CONFIG_PATH, "rb") as f:
         cfg = tomllib.load(f)
@@ -1800,6 +1815,7 @@ def main():
         if path:
             print(open(path).read())
         sys.exit(0 if path else 1)
+    ensure_config()
     app = App()
 
     def stop(*_):
