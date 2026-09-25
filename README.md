@@ -55,7 +55,7 @@ Some features depend on the desktop:
 | Feature | Where it works |
 |---|---|
 | Auto-switch profiles by focused window | Hyprland, Sway, i3, niri, any X11 session. Not yet on GNOME or KDE Plasma under Wayland ([#3](https://github.com/NLMP-DDHS/galleon-deck/issues/3)). |
-| NumLock handled for the deck's numpad | Hyprland and X11. Elsewhere your desktop's NumLock applies (keep it on). |
+| NumLock handled for the deck's numpad | Hyprland and X11. Elsewhere your desktop's NumLock applies (keep it on). Chromium browsers on Hyprland need NumLock on for the main keyboard too (see [Troubleshooting](#troubleshooting)). |
 | Wallpaper detection | noctalia, swww, hyprpaper, GNOME. For anything else, set `command` under `[wallpaper_theme]`. |
 | Now-playing on the top screen | Any player that supports MPRIS (needs `playerctl`) |
 
@@ -162,6 +162,11 @@ Useful commands:
   re-run `./install.sh`, or replug the keyboard.
 - **Numpad keys type arrows or Home/End:** NumLock is off. The service turns it on for its
   own virtual keyboard on Hyprland and X11; on other desktops, turn NumLock on.
+- **Numpad works in a terminal but types arrows in Brave, Chrome or other Chromium browsers
+  (Hyprland):** Chromium goes by your main keyboard's NumLock, not the deck's. To keep it
+  on at every login, turn it on for all keyboards in your Hyprland config:
+  `input { numlock_by_default = true }` (Lua: `hl.config({ input = { numlock_by_default = true } })`).
+  It applies right away on reload, no replug or re-login needed.
 - **Buttons that launch apps do nothing:** the command isn't on the service's PATH. The
   systemd unit adds `~/.local/bin`; use full paths for anything else.
 - **Auto-switch doesn't react:** see the compatibility table. Find a window's class with
