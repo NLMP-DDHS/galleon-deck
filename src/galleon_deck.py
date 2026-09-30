@@ -47,7 +47,7 @@ import evdev
 from evdev import ecodes
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.1.0"  # add-ons can require a minimum version
+VERSION = "1.2.0"  # add-ons can require a minimum version
 VID, PID = "00001B1C", "00002B18"
 KEYS = 12
 KEY_PX = 160
