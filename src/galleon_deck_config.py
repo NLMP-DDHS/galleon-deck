@@ -178,6 +178,7 @@ class Window(Adw.ApplicationWindow):
         self.profile = self.model.config.get("start_profile") if self.model.config.get("start_profile") in self.model.profiles else next(iter(self.model.profiles))
         self.page = 0
         self.key = 0
+        self.picked_kind = None  # an action chosen for a key but not filled in yet
         self.pending = {}  # debounce source ids
         self.icons = None
         self.addons = None  # galleon-addon list --json, fetched when the Add-ons tab is built
@@ -485,6 +486,10 @@ class Window(Adw.ApplicationWindow):
         action = Adw.PreferencesGroup(title="When pressed")
         self.add_group(page, action)
         current = next((i for i, (_, k) in enumerate(ACTIONS) if k and k in spec), 0)
+        if not current and self.picked_kind and self.picked_kind[:3] == (self.profile, self.page, self.key):
+            # key, shortcut and command have no default value, so nothing is saved
+            # until one is typed; keep showing the chosen action and its field
+            current = next(i for i, (_, k) in enumerate(ACTIONS) if k == self.picked_kind[3])
         kind = Adw.ComboRow(title="Action", model=Gtk.StringList.new([a for a, _ in ACTIONS]), selected=current)
         kind.connect("notify::selected", lambda r, _p: self.set_action_kind(ACTIONS[r.get_selected()][1]))
         action.add(kind)
@@ -586,6 +591,7 @@ class Window(Adw.ApplicationWindow):
         defaults = {"media": "play-pause", "page": "back", "profile": next(iter(self.model.profiles))}
         if kind and kind not in spec and kind in defaults:
             spec[kind] = defaults[kind]
+        self.picked_kind = (self.profile, self.page, self.key, kind)
         self.changed_profile()
         self.build_key_page()
 

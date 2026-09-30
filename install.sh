@@ -25,6 +25,9 @@ for arg in "$@"; do
     esac
 done
 
+# The distro Python, which gets the packages below; a conda/pyenv/venv python3
+# earlier on PATH wouldn't see them.
+PY=/usr/bin/python3; [ -x "$PY" ] || PY=python3
 say() { printf '\033[1;33m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;31m!!\033[0m %s\n' "$*" >&2; }
 as_root() {
@@ -41,7 +44,7 @@ if [ "$DEPS" = 1 ]; then
     elif command -v apt-get >/dev/null; then
         pkgs=(python3 python3-pil python3-evdev python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-fonttools
               fonts-jetbrains-mono playerctl libnotify-bin curl unzip)
-        python3 -c 'import tomllib' 2>/dev/null || pkgs+=(python3-tomli)
+        "$PY" -c 'import tomllib' 2>/dev/null || pkgs+=(python3-tomli)
         say "Installing packages with apt: ${pkgs[*]}"
         as_root apt-get install -y "${pkgs[@]}"
     elif command -v dnf >/dev/null; then
@@ -81,7 +84,7 @@ if ! fc-list 2>/dev/null | grep -qi "Quantico"; then
     fc-cache -f "$DATA/fonts" >/dev/null || true
 fi
 
-python3 - <<'EOF' || { warn "Missing Python modules (see above); install them and re-run."; exit 1; }
+"$PY" - <<'EOF' || { warn "Missing Python modules for $PY (see above); install them and re-run."; exit 1; }
 import importlib, sys
 missing = []
 for mod in ("PIL", "evdev"):
