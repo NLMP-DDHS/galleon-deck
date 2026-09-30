@@ -827,6 +827,7 @@ class Keyboard:
         keys = [c for c in ecodes.keys if isinstance(c, int) and 0 < c < 0x2FF]
         self.ui = evdev.UInput({ecodes.EV_KEY: keys}, name="galleon-deck")
         self.numlock_checked = False
+        self.lock = threading.Lock()  # sequences type from their own thread
 
     @staticmethod
     def codes(combo):
@@ -859,14 +860,39 @@ class Keyboard:
             pass
 
     def press(self, codes):
-        for c in codes:
-            self.ui.write(ecodes.EV_KEY, c, 1)
-        self.ui.syn()
+        with self.lock:
+            for c in codes:
+                self.ui.write(ecodes.EV_KEY, c, 1)
+            self.ui.syn()
 
     def release(self, codes):
-        for c in reversed(codes):
-            self.ui.write(ecodes.EV_KEY, c, 0)
-        self.ui.syn()
+        with self.lock:
+            for c in reversed(codes):
+                self.ui.write(ecodes.EV_KEY, c, 0)
+            self.ui.syn()
+
+    @staticmethod
+    def steps(sequence):
+        """"W S D" or ["W", "S", "D"] -> one list of codes per step."""
+        items = sequence.split() if isinstance(sequence, str) else sequence
+        return [Keyboard.codes(item) for item in items]
+
+    def type_sequence(self, steps, hold=(), step_ms=40):
+        """Tap each step in turn with `hold` held throughout, like a game combo
+        (Helldivers stratagems: hold Ctrl, then tap the arrows)."""
+        pause = max(10, min(500, int(step_ms))) / 1000
+        if hold:
+            self.press(hold)
+            time.sleep(pause)
+        try:
+            for codes in steps:
+                self.press(codes)
+                time.sleep(pause)
+                self.release(codes)
+                time.sleep(pause)
+        finally:
+            if hold:
+                self.release(hold)
 
     def tap(self, codes):
         self.press(codes)
@@ -1115,9 +1141,11 @@ def validate_pages(pages, where):
             raise ValueError(f"{where}: page {p['name']!r} has {len(keys)} keys; the deck has {KEYS}")
         p["keys"] = keys + [{}] * (KEYS - len(keys))
         for k in p["keys"]:
-            for field in ("key", "keys"):
+            for field in ("key", "keys", "hold"):
                 if field in k:
                     Keyboard.codes(k[field])  # validate now, not on first press
+            if "sequence" in k:
+                Keyboard.steps(k["sequence"])
 
 
 def ensure_config():
@@ -1290,6 +1318,7 @@ class App:
         self.deck = None
         self.key_state = [0] * KEYS
         self.held = {}  # key index -> codes held down
+        self.typing = threading.Event()  # a sequence is being typed
         self.dial_down = [False, False]
         self.dial_turned = [False, False]
         self.last_lcd = None
@@ -1565,6 +1594,8 @@ class App:
                 codes = Keyboard.codes(spec.get("key") or spec.get("keys"))
                 self.kb.press(codes)
                 self.held[i] = codes
+            if "sequence" in spec:
+                self.play_sequence(spec)
             if "exec" in spec:
                 proc = run(spec["exec"])
                 if spec.get("confirm"):
@@ -1591,6 +1622,24 @@ class App:
             log(f"key {i}: {e}")
         if self.page == page and self.profile == profile:  # a switch has already redrawn every key
             self.draw_key(i, pressed=True)
+
+    def play_sequence(self, spec):
+        """Type a key's sequence in the background, so the deck stays responsive.
+        A press while one is still typing is dropped rather than interleaved."""
+        if self.typing.is_set():
+            return
+        steps = Keyboard.steps(spec["sequence"])
+        hold = Keyboard.codes(spec["hold"]) if spec.get("hold") else []
+        self.typing.set()
+
+        def typing():
+            try:
+                self.kb.type_sequence(steps, hold, spec.get("step_ms", 40))
+            except OSError as e:
+                log(f"sequence: {e}")
+            finally:
+                self.typing.clear()
+        threading.Thread(target=typing, daemon=True).start()
 
     def confirm(self, i, proc, page, profile):
         """Flash key i with the result of its command: a tick on success, a cross on failure."""
