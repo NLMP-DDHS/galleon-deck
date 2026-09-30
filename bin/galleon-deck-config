@@ -1,8 +1,11 @@
 #!/bin/sh
 # Configurator for galleon-deck (GTK4 + libadwaita).
 here=$(dirname "$(readlink -f "$0")")
+# The distro Python has the packaged modules; a conda/pyenv/venv python3
+# earlier on PATH usually doesn't.
+py=/usr/bin/python3; [ -x "$py" ] || py=python3
 for src in "$here/../src" "$here/../share/galleon-deck" "${XDG_DATA_HOME:-$HOME/.local/share}/galleon-deck"; do
-    [ -f "$src/galleon_deck_config.py" ] && exec python3 "$src/galleon_deck_config.py" "$@"
+    [ -f "$src/galleon_deck_config.py" ] && exec "$py" "$src/galleon_deck_config.py" "$@"
 done
 echo "galleon-deck-config: can't find galleon_deck_config.py" >&2
 exit 1
