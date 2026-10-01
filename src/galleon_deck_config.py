@@ -36,6 +36,7 @@ ACTIONS = [  # (label, spec key)
     ("Nothing", None),
     ("Press a key", "key"),
     ("Shortcut", "keys"),
+    ("Key sequence", "sequence"),
     ("Run a command", "exec"),
     ("Media control", "media"),
     ("Go to page", "page"),
@@ -497,6 +498,24 @@ class Window(Adw.ApplicationWindow):
             rec.connect("clicked", lambda _b: self.record_key(k, row))
             row.add_suffix(rec)
             action.add(row)
+        elif k == "sequence":
+            seq = spec.get("sequence", "")
+            row = Adw.EntryRow(title="Keys tapped in turn, e.g. UP DOWN RIGHT LEFT",
+                               text=seq if isinstance(seq, str) else " ".join(seq))
+            row.connect("changed", lambda r: self.set_sequence_field(r))
+            action.add(row)
+            hold = Adw.EntryRow(title="Held throughout (optional), e.g. CTRL", text=str(spec.get("hold", "")))
+            hold.connect("changed", lambda r: self.set_key_field("hold", r))
+            rec = Gtk.Button(label="Record", valign=Gtk.Align.CENTER, tooltip_text="Press the key to hold")
+            rec.connect("clicked", lambda _b: self.record_key("hold", hold))
+            hold.add_suffix(rec)
+            action.add(hold)
+            step = Adw.SpinRow.new_with_range(10, 500, 5)
+            step.set_title("Delay between taps (ms)")
+            step.set_subtitle("Raise it if the game drops inputs")
+            step.set_value(spec.get("step_ms", 40))
+            step.connect("notify::value", lambda r, _p: self.set_field("step_ms", "" if int(r.get_value()) == 40 else int(r.get_value())))
+            action.add(step)
         elif k == "exec":
             row = Adw.EntryRow(title="Command", text=str(spec.get("exec", "")))
             row.connect("changed", lambda r: self.set_field("exec", r.get_text()))
@@ -571,6 +590,15 @@ class Window(Adw.ApplicationWindow):
         except ValueError:
             row.add_css_class("error")
 
+    def set_sequence_field(self, row):
+        text = " ".join(row.get_text().split())
+        try:
+            gd.Keyboard.steps(text)
+            row.remove_css_class("error")
+            self.set_field("sequence", text)
+        except ValueError:
+            row.add_css_class("error")
+
     def set_action_kind(self, kind):
         spec = self.spec()
         if spec is None:
@@ -583,6 +611,9 @@ class Window(Adw.ApplicationWindow):
                 spec.pop(k, None)
         if kind != "exec":
             spec.pop("confirm", None)
+        if kind != "sequence":
+            spec.pop("hold", None)
+            spec.pop("step_ms", None)
         defaults = {"media": "play-pause", "page": "back", "profile": next(iter(self.model.profiles))}
         if kind and kind not in spec and kind in defaults:
             spec[kind] = defaults[kind]
@@ -597,7 +628,7 @@ class Window(Adw.ApplicationWindow):
             self.build_key_page()
 
     def record_key(self, field, row):
-        dialog = Adw.AlertDialog.new("Press the key" if field == "key" else "Press the shortcut",
+        dialog = Adw.AlertDialog.new("Press the shortcut" if field == "keys" else "Press the key",
                                      "Waiting for a key… (Escape cancels.) Shortcuts your desktop grabs, "
                                      "like SUPER combinations, may not reach this window.")
         dialog.add_response("cancel", "Cancel")
