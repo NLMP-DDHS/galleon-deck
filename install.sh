@@ -122,7 +122,10 @@ else
     rm -f "$BIN/galleon-deck" "$BIN/galleon-deck-config" "$BIN/galleon-addon"
     install -m755 "$REPO/bin/galleon-deck" "$REPO/bin/galleon-deck-config" "$REPO/bin/galleon-addon" "$BIN/"
 fi
-install -m644 "$REPO/data/applications/io.github.galleondeck.Config.desktop" "$DATA/applications/"
+# absolute Exec: many sessions (uwsm, greetd) start without ~/.local/bin on PATH,
+# and launchers hide entries whose Exec they cannot resolve
+sed "s|^Exec=galleon-deck-config|Exec=$BIN/galleon-deck-config|" \
+    "$REPO/data/applications/io.github.galleondeck.Config.desktop" > "$DATA/applications/io.github.galleondeck.Config.desktop"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DATA/applications" 2>/dev/null || true
 
 if [ ! -e "$CONF/galleon-deck/config.toml" ]; then
