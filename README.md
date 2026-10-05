@@ -147,7 +147,11 @@ Add-ons use this, so removing one also removes its rule.
 { icon = "\U000F066F", label = "Discord", exec = "discord" }
 { label = "7", key = "KP7" }
 { icon = "\U000F0100", label = "Shot", confirm = true, exec = "grim ~/shot.png" }
+{ label = "Resupply", hold = "CTRL", sequence = "S S W D" }
 ```
+
+`sequence` taps keys in turn, with `hold` held throughout: game combos like Helldivers 2
+stratagems. `step_ms` sets the gap between taps (default 40).
 
 Useful commands:
 - `galleon-deck --version` prints the version (add-ons can require a minimum).

@@ -29,6 +29,9 @@
 #            media   = "play-pause"          play-pause, next, previous, stop
 #            page    = "apps" | "back"       switch page
 #            profile = "gaming"              switch profile
+#            sequence = "W S D"              tap keys in turn (a game combo); add
+#            hold = "CTRL"                   ...a key held for the whole sequence, and
+#            step_ms = 40                    ...the gap between taps (default 40)
 #
 # Key names are Linux input names without KEY_: A, F5, ENTER, KP0-KP9, KPDOT,
 # KPENTER, KPPLUS, KPMINUS, KPASTERISK, KPSLASH, VOLUMEUP, ...
