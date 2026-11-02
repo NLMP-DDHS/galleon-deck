@@ -153,6 +153,38 @@ Add-ons use this, so removing one also removes its rule.
 `sequence` taps keys in turn, with `hold` held throughout: game combos like Helldivers 2
 stratagems. `step_ms` sets the gap between taps (default 40).
 
+`repeat` is a toggle: press the deck key once and it keeps tapping the key or shortcut
+until you press it again. The deck key stays lit while it runs, and switching page or
+profile stops it. `repeat_ms` sets the time between presses (default 100).
+
+```toml
+{ label = "Auto jump", repeat = "SPACE", repeat_ms = 250 }
+{ label = "Spam 7", repeat = "SHIFT+7" }
+```
+
+### Key names
+
+`key`, `keys`, `hold`, `sequence` and `repeat` all take Linux input key names, without the
+`KEY_` prefix and in any case. Join keys with `+` for a combo: `SHIFT+PAGEDOWN`,
+`CTRL+SHIFT+T`, `SHIFT+7`. A shortcut types the physical key, so `SHIFT+7` gives `&` on a
+US layout.
+
+| Keys | Names |
+|---|---|
+| Letters, digits | `A`-`Z`, `0`-`9` |
+| Function keys | `F1`-`F24` |
+| Modifiers | `CTRL`, `SHIFT`, `ALT`, `SUPER` (also `WIN`, `META`); right-hand ones: `RIGHTCTRL`, `RIGHTSHIFT`, `RIGHTALT`, `RIGHTMETA` |
+| Editing | `ENTER`, `SPACE`, `TAB`, `BACKSPACE`, `ESC`, `DELETE`, `INSERT` |
+| Navigation | `UP`, `DOWN`, `LEFT`, `RIGHT`, `HOME`, `END`, `PAGEUP`, `PAGEDOWN` |
+| Symbols | `MINUS`, `EQUAL`, `LEFTBRACE`, `RIGHTBRACE`, `SEMICOLON`, `APOSTROPHE`, `GRAVE`, `BACKSLASH`, `COMMA`, `DOT`, `SLASH` |
+| Numpad | `KP0`-`KP9`, `KPDOT`, `KPENTER`, `KPPLUS`, `KPMINUS`, `KPASTERISK`, `KPSLASH`, `NUMLOCK` |
+| Locks, system | `CAPSLOCK`, `SCROLLLOCK`, `SYSRQ` (Print Screen), `PAUSE`, `COMPOSE` (Menu) |
+| Media | `VOLUMEUP`, `VOLUMEDOWN`, `MUTE`, `PLAYPAUSE`, `NEXTSONG`, `PREVIOUSSONG` |
+
+Anything else in the kernel's
+[input-event-codes.h](https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h)
+works too. In the configurator, the **Record** button fills a key in for you.
+
 Useful commands:
 - `galleon-deck --version` prints the version (add-ons can require a minimum).
 - `galleon-deck --theme-from-wallpaper [image]` builds the wallpaper theme from a terminal.
