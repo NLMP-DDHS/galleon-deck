@@ -35,24 +35,45 @@ as_root() {
 }
 
 # ------------------------------------------------------------ dependencies
+# Go by the distro first: Debian and Ubuntu package Arch's pacman
+# (pacman-package-manager), so finding a pacman command proves nothing.
+pkg_family() {
+    local id=""
+    if [ -r /etc/os-release ]; then
+        id=$(. /etc/os-release; echo " ${ID:-} ${ID_LIKE:-} ")
+    fi
+    case $id in
+        *" arch "*) echo pacman; return ;;
+        *" debian "*|*" ubuntu "*) echo apt; return ;;
+        *" fedora "*|*" rhel "*) echo dnf; return ;;
+        *" suse "*|*" opensuse "*) echo zypper; return ;;
+    esac
+    # An unrecognised distro: go by the package manager, the native ones first.
+    local pm
+    for pm in apt-get dnf zypper pacman; do
+        if command -v "$pm" >/dev/null; then echo "${pm%-get}"; return; fi
+    done
+}
+
 if [ "$DEPS" = 1 ]; then
-    if command -v pacman >/dev/null; then
+    family=$(pkg_family)
+    if [ "$family" = pacman ]; then
         pkgs=(python python-pillow python-evdev python-gobject gtk4 libadwaita python-fonttools
               ttf-nerd-fonts-symbols ttf-jetbrains-mono playerctl libnotify)
         say "Installing packages with pacman: ${pkgs[*]}"
         as_root pacman -S --needed "${pkgs[@]}"
-    elif command -v apt-get >/dev/null; then
+    elif [ "$family" = apt ]; then
         pkgs=(python3 python3-pil python3-evdev python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-fonttools
               fonts-jetbrains-mono playerctl libnotify-bin curl unzip)
         "$PY" -c 'import tomllib' 2>/dev/null || pkgs+=(python3-tomli)
         say "Installing packages with apt: ${pkgs[*]}"
         as_root apt-get install -y "${pkgs[@]}"
-    elif command -v dnf >/dev/null; then
+    elif [ "$family" = dnf ]; then
         pkgs=(python3 python3-pillow python3-evdev python3-gobject gtk4 libadwaita python3-fonttools
               jetbrains-mono-fonts playerctl libnotify curl unzip)
         say "Installing packages with dnf: ${pkgs[*]}"
         as_root dnf install -y "${pkgs[@]}"
-    elif command -v zypper >/dev/null; then
+    elif [ "$family" = zypper ]; then
         pkgs=(python3 python3-Pillow python3-evdev python3-gobject python3-gobject-Gdk typelib-1_0-Gtk-4_0
               typelib-1_0-Adw-1 python3-fonttools jetbrains-mono-fonts playerctl libnotify-tools curl unzip)
         say "Installing packages with zypper: ${pkgs[*]}"
