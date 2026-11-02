@@ -37,6 +37,7 @@ ACTIONS = [  # (label, spec key)
     ("Press a key", "key"),
     ("Shortcut", "keys"),
     ("Key sequence", "sequence"),
+    ("Repeat a key (toggle)", "repeat"),
     ("Run a command", "exec"),
     ("Media control", "media"),
     ("Go to page", "page"),
@@ -364,6 +365,7 @@ class Window(Adw.ApplicationWindow):
         if page.get("settings"):
             try:
                 fake = object.__new__(gd.App)
+                fake.repeating = {}  # nothing repeats in a preview
                 fake.cfg, fake.profile = gd.load_config(), self.profile
                 fake.page = len(fake.pages()) - 1
                 images = [fake.key_image(i) for i in range(gd.KEYS)]
@@ -503,6 +505,19 @@ class Window(Adw.ApplicationWindow):
             rec.connect("clicked", lambda _b: self.record_key(k, row))
             row.add_suffix(rec)
             action.add(row)
+        elif k == "repeat":
+            row = Adw.EntryRow(title="Key or shortcut to repeat, e.g. SPACE, SHIFT+7", text=str(spec.get("repeat", "")))
+            row.connect("changed", lambda r: self.set_key_field("repeat", r))
+            rec = Gtk.Button(label="Record", valign=Gtk.Align.CENTER, tooltip_text="Press the key or shortcut to repeat")
+            rec.connect("clicked", lambda _b: self.record_key("repeat", row))
+            row.add_suffix(rec)
+            action.add(row)
+            every = Adw.SpinRow.new_with_range(20, 10000, 10)
+            every.set_title("Time between presses (ms)")
+            every.set_subtitle("Press the deck key once to start, again to stop")
+            every.set_value(spec.get("repeat_ms", 100))
+            every.connect("notify::value", lambda r, _p: self.set_field("repeat_ms", "" if int(r.get_value()) == 100 else int(r.get_value())))
+            action.add(every)
         elif k == "sequence":
             seq = spec.get("sequence", "")
             row = Adw.EntryRow(title="Keys tapped in turn, e.g. UP DOWN RIGHT LEFT",
@@ -619,6 +634,8 @@ class Window(Adw.ApplicationWindow):
         if kind != "sequence":
             spec.pop("hold", None)
             spec.pop("step_ms", None)
+        if kind != "repeat":
+            spec.pop("repeat_ms", None)
         defaults = {"media": "play-pause", "page": "back", "profile": next(iter(self.model.profiles))}
         if kind and kind not in spec and kind in defaults:
             spec[kind] = defaults[kind]
@@ -634,7 +651,7 @@ class Window(Adw.ApplicationWindow):
             self.build_key_page()
 
     def record_key(self, field, row):
-        dialog = Adw.AlertDialog.new("Press the shortcut" if field == "keys" else "Press the key",
+        dialog = Adw.AlertDialog.new("Press the shortcut" if field in ("keys", "repeat") else "Press the key",
                                      "Waiting for a key… (Escape cancels.) Shortcuts your desktop grabs, "
                                      "like SUPER combinations, may not reach this window.")
         dialog.add_response("cancel", "Cancel")
@@ -646,9 +663,9 @@ class Window(Adw.ApplicationWindow):
             if not name or name == "ESC" and field == "key" and not state:
                 dialog.close()
                 return True
-            if name in ("LEFTCTRL", "RIGHTCTRL", "LEFTSHIFT", "RIGHTSHIFT", "LEFTALT", "RIGHTALT", "LEFTMETA", "RIGHTMETA") and field == "keys":
+            if name in ("LEFTCTRL", "RIGHTCTRL", "LEFTSHIFT", "RIGHTSHIFT", "LEFTALT", "RIGHTALT", "LEFTMETA", "RIGHTMETA") and field in ("keys", "repeat"):
                 return True  # wait for the main key of the shortcut
-            mods = [m for flag, m in MODIFIERS.items() if state & getattr(Gdk.ModifierType, flag)] if field == "keys" else []
+            mods = [m for flag, m in MODIFIERS.items() if state & getattr(Gdk.ModifierType, flag)] if field in ("keys", "repeat") else []
             row.set_text("+".join(mods + [name]))
             dialog.close()
             return True

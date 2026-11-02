@@ -1141,7 +1141,7 @@ def validate_pages(pages, where):
             raise ValueError(f"{where}: page {p['name']!r} has {len(keys)} keys; the deck has {KEYS}")
         p["keys"] = keys + [{}] * (KEYS - len(keys))
         for k in p["keys"]:
-            for field in ("key", "keys", "hold"):
+            for field in ("key", "keys", "hold", "repeat"):
                 if field in k:
                     Keyboard.codes(k[field])  # validate now, not on first press
             if "sequence" in k:
@@ -1319,6 +1319,7 @@ class App:
         self.key_state = [0] * KEYS
         self.held = {}  # key index -> codes held down
         self.typing = threading.Event()  # a sequence is being typed
+        self.repeating = {}  # key index -> Event that stops its repeat
         self.dial_down = [False, False]
         self.dial_turned = [False, False]
         self.last_lcd = None
@@ -1343,6 +1344,7 @@ class App:
             self.lcd_dirty = True
             return
         first = self.cfg is None
+        self.release_held()  # the keys may have changed under a running repeat
         self.cfg, self.error = cfg, None
         if first or self.profile not in cfg["profiles"]:
             start = cfg.get("start_profile")
@@ -1392,6 +1394,7 @@ class App:
     # drawing --------------------------------------------------------------
     def key_image(self, i, pressed=False):
         spec = self.keys()[i]
+        pressed = pressed or i in self.repeating  # a running repeat stays lit
         if "wallpaper_theme" in spec:
             if "wallpaper" not in self.cfg["themes"]:
                 return render_key({"icon": "󰸉", "label": "wallpaper"}, self.theme, pressed)
@@ -1452,6 +1455,8 @@ class App:
     def release_held(self):
         for i in list(self.held):
             self.kb.release(self.held.pop(i))
+        for i in list(self.repeating):
+            self.repeating.pop(i).set()
 
     def set_page(self, index, remember=True):
         index %= len(self.pages())
@@ -1596,6 +1601,8 @@ class App:
                 self.held[i] = codes
             if "sequence" in spec:
                 self.play_sequence(spec)
+            if "repeat" in spec:
+                self.toggle_repeat(i, spec)
             if "exec" in spec:
                 proc = run(spec["exec"])
                 if spec.get("confirm"):
@@ -1640,6 +1647,30 @@ class App:
             finally:
                 self.typing.clear()
         threading.Thread(target=typing, daemon=True).start()
+
+    def toggle_repeat(self, i, spec):
+        """First press starts tapping the key over and over; the next press stops it.
+        Switching page or profile, or a config reload, also stops it."""
+        if i in self.repeating:
+            self.repeating.pop(i).set()
+            return
+        codes = Keyboard.codes(spec["repeat"])
+        if str(spec["repeat"]).upper().startswith("KP"):
+            self.kb.ensure_numlock()
+        interval = max(20, min(10000, int(spec.get("repeat_ms", 100)))) / 1000
+        stop = threading.Event()
+        self.repeating[i] = stop
+
+        def repeat():
+            try:
+                while not stop.is_set():
+                    self.kb.press(codes)
+                    time.sleep(0.02)  # games can miss a press and release in the same instant
+                    self.kb.release(codes)
+                    stop.wait(interval)
+            except OSError as e:
+                log(f"repeat: {e}")
+        threading.Thread(target=repeat, daemon=True).start()
 
     def confirm(self, i, proc, page, profile):
         """Flash key i with the result of its command: a tick on success, a cross on failure."""
