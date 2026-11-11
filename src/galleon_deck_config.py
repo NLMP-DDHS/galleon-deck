@@ -38,6 +38,7 @@ ACTIONS = [  # (label, spec key)
     ("Shortcut", "keys"),
     ("Key sequence", "sequence"),
     ("Repeat a key (toggle)", "repeat"),
+    ("Mouse", "mouse"),
     ("Run a command", "exec"),
     ("Media control", "media"),
     ("Go to page", "page"),
@@ -57,6 +58,7 @@ CSS = b"""
 .glyph-name { font-size: 9px; opacity: 0.7; }
 .theme-tile { padding: 0; border-radius: 12px; }
 .theme-tile.selected { outline: 3px solid @accent_color; outline-offset: 2px; }
+.field-error { color: @error_color; }
 """
 
 
@@ -222,7 +224,7 @@ class Window(Adw.ApplicationWindow):
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, position=640, shrink_start_child=False, shrink_end_child=False)
         view.set_content(paned)
-        paned.set_start_child(self.build_deck())
+        paned.set_start_child(Gtk.ScrolledWindow(child=self.build_deck(), min_content_width=160, min_content_height=120))
 
         self.stack = Adw.ViewStack()
         switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
@@ -512,30 +514,39 @@ class Window(Adw.ApplicationWindow):
             rec.connect("clicked", lambda _b: self.record_key("repeat", row))
             row.add_suffix(rec)
             action.add(row)
-            every = Adw.SpinRow.new_with_range(20, 10000, 10)
+            every = Adw.SpinRow.new_with_range(0, 10000, 10)
             every.set_title("Time between presses (ms)")
-            every.set_subtitle("Press the deck key once to start, again to stop")
+            every.set_subtitle("Press the deck key once to start, again to stop. 0 is as fast as possible; some apps may drop keys")
             every.set_value(spec.get("repeat_ms", 100))
             every.connect("notify::value", lambda r, _p: self.set_field("repeat_ms", "" if int(r.get_value()) == 100 else int(r.get_value())))
             action.add(every)
         elif k == "sequence":
             seq = spec.get("sequence", "")
-            row = Adw.EntryRow(title="Keys tapped in turn, e.g. UP DOWN RIGHT LEFT",
-                               text=seq if isinstance(seq, str) else " ".join(seq))
-            row.connect("changed", lambda r: self.set_sequence_field(r))
-            action.add(row)
+            action.add(self.text_area(
+                "Steps run in turn, on any number of lines. Anything after a # is a note.\n"
+                "Keys: UP DOWN CTRL+V   Mouse: CLICK RIGHTCLICK DOUBLECLICK MOVE:100,-50 SCROLL:-3   Pause: WAIT:500",
+                seq if isinstance(seq, str) else " ".join(seq), gd.Keyboard.steps,
+                lambda text: self.set_field("sequence", text)))
             hold = Adw.EntryRow(title="Held throughout (optional), e.g. CTRL", text=str(spec.get("hold", "")))
             hold.connect("changed", lambda r: self.set_key_field("hold", r))
             rec = Gtk.Button(label="Record", valign=Gtk.Align.CENTER, tooltip_text="Press the key to hold")
             rec.connect("clicked", lambda _b: self.record_key("hold", hold))
             hold.add_suffix(rec)
             action.add(hold)
-            step = Adw.SpinRow.new_with_range(10, 500, 5)
+            step = Adw.SpinRow.new_with_range(0, 500, 5)
             step.set_title("Delay between taps (ms)")
-            step.set_subtitle("Raise it if the game drops inputs")
+            step.set_subtitle("Raise it if the game or app drops inputs")
             step.set_value(spec.get("step_ms", 40))
             step.connect("notify::value", lambda r, _p: self.set_field("step_ms", "" if int(r.get_value()) == 40 else int(r.get_value())))
             action.add(step)
+            self.add_loop_rows(action, spec)
+        elif k == "mouse":
+            action.add(self.text_area(
+                "Mouse steps run in turn: CLICK RIGHTCLICK MIDDLECLICK DOUBLECLICK BACKCLICK FORWARDCLICK\n"
+                "MOVE:100,-50 moves from the cursor's position   SCROLL:3 up, SCROLL:-3 down   WAIT:500 pauses",
+                str(spec.get("mouse", "")), gd.Keyboard.mouse_steps,
+                lambda text: self.set_field("mouse", text)))
+            self.add_loop_rows(action, spec)
         elif k == "exec":
             row = Adw.EntryRow(title="Command", text=str(spec.get("exec", "")))
             row.connect("changed", lambda r: self.set_field("exec", r.get_text()))
@@ -560,6 +571,56 @@ class Window(Adw.ApplicationWindow):
                                selected=names.index(spec["profile"]) if spec.get("profile") in names else 0)
             row.connect("notify::selected", lambda r, _p: self.set_field("profile", names[r.get_selected()]))
             action.add(row)
+
+        notes = Adw.PreferencesGroup(title="Notes", description="For you: what this key does and why. The deck doesn't show them.")
+        self.add_group(page, notes)
+        notes.add(self.text_area("", str(spec.get("note", "")), lambda _t: None, lambda text: self.set_field("note", text)))
+
+    def add_loop_rows(self, action, spec):
+        """A switch to repeat the whole sequence, and the gap between runs."""
+        loop = Adw.SwitchRow(title="Repeat until pressed again", subtitle="Press the deck key once to start, again to stop",
+                             active=bool(spec.get("loop")))
+        action.add(loop)
+        every = Adw.SpinRow.new_with_range(0, 10000, 10)
+        every.set_title("Time between repeats (ms)")
+        every.set_subtitle("0 is as fast as possible; some apps may drop keys")
+        every.set_value(spec.get("repeat_ms", 100))
+        every.set_visible(loop.get_active())
+        every.connect("notify::value", lambda r, _p: self.set_field("repeat_ms", "" if int(r.get_value()) == 100 else int(r.get_value())))
+        action.add(every)
+
+        def toggled(row, _p):
+            self.set_field("loop", row.get_active())
+            every.set_visible(row.get_active())
+        loop.connect("notify::active", toggled)
+
+    def text_area(self, hint, text, validate, save):
+        """A multi-line field that grows with its text, then scrolls. An invalid
+        entry shows why and isn't saved, so the last good value stays in place."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=8)
+        if hint:
+            box.append(Gtk.Label(label=hint, xalign=0, wrap=True, css_classes=["dim-label", "caption"]))
+        view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, monospace=True, top_margin=8, bottom_margin=8,
+                            left_margin=8, right_margin=8, accepts_tab=False)
+        view.get_buffer().set_text(text)
+        scroll = Gtk.ScrolledWindow(child=view, hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
+                                    min_content_height=72, max_content_height=320)
+        box.append(Gtk.Frame(child=scroll))
+        error = Gtk.Label(xalign=0, wrap=True, visible=False, css_classes=["caption", "field-error"])
+        box.append(error)
+
+        def changed(buffer):
+            value = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False).strip()
+            try:
+                validate(value)
+            except ValueError as e:
+                error.set_label(str(e))
+                error.set_visible(True)
+                return
+            error.set_visible(False)
+            save(value)
+        view.get_buffer().connect("changed", changed)
+        return box
 
     def colour_row(self, title, value, on_change, default="fg"):
         """A dropdown of theme colours plus a custom colour button; `default` is
@@ -594,7 +655,7 @@ class Window(Adw.ApplicationWindow):
         if not spec:  # an empty {} may be shared; give this key its own dict
             spec = {}
             page_keys[self.key] = spec
-        if value in ("", None, False):
+        if value is False or value in ("", None):  # 0 is a real value: a delay of 0 ms
             spec.pop(field, None)
         else:
             spec[field] = value
@@ -607,15 +668,6 @@ class Window(Adw.ApplicationWindow):
                 gd.Keyboard.codes(text)
             row.remove_css_class("error")
             self.set_field(field, text)
-        except ValueError:
-            row.add_css_class("error")
-
-    def set_sequence_field(self, row):
-        text = " ".join(row.get_text().split())
-        try:
-            gd.Keyboard.steps(text)
-            row.remove_css_class("error")
-            self.set_field("sequence", text)
         except ValueError:
             row.add_css_class("error")
 
@@ -634,8 +686,10 @@ class Window(Adw.ApplicationWindow):
         if kind != "sequence":
             spec.pop("hold", None)
             spec.pop("step_ms", None)
-        if kind != "repeat":
+        if kind not in ("repeat", "sequence", "mouse"):
             spec.pop("repeat_ms", None)
+        if kind not in ("sequence", "mouse"):
+            spec.pop("loop", None)
         defaults = {"media": "play-pause", "page": "back", "profile": next(iter(self.model.profiles))}
         if kind and kind not in spec and kind in defaults:
             spec[kind] = defaults[kind]

@@ -29,11 +29,18 @@
 #            media   = "play-pause"          play-pause, next, previous, stop
 #            page    = "apps" | "back"       switch page
 #            profile = "gaming"              switch profile
-#            sequence = "W S D"              tap keys in turn (a game combo); add
-#            hold = "CTRL"                   ...a key held for the whole sequence, and
-#            step_ms = 40                    ...the gap between taps (default 40)
+#            sequence = "W S D"              run steps in turn (a combo or macro); add
+#            hold = "CTRL"                   ...a key held for the whole sequence,
+#            step_ms = 40                    ...the gap between steps (default 40, down to 0), and
+#            loop = true                     ...press once to keep repeating it, again to stop
 #            repeat = "SPACE"                press once to keep tapping a key or
-#            repeat_ms = 100                 ...shortcut every 100 ms; press again to stop
+#            repeat_ms = 100                 ...shortcut every 100 ms (down to 0); press again to stop
+#            mouse = "CLICK"                 mouse steps; also takes loop and repeat_ms
+#            note = "what this key does"     your own notes; the deck doesn't show them
+#
+# Sequence and mouse steps: CLICK RIGHTCLICK MIDDLECLICK DOUBLECLICK BACKCLICK
+# FORWARDCLICK, MOVE:100,-50 (relative), SCROLL:3 (up) or SCROLL:-3 (down), WAIT:500.
+# Sequences also take keys, can span lines, and treat text after a # as a note.
 #
 # Key names are Linux input names without KEY_: A, F5, ENTER, KP0-KP9, KPDOT,
 # KPENTER, KPPLUS, KPMINUS, KPASTERISK, KPSLASH, VOLUMEUP, ... Join keys with +

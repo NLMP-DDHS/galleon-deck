@@ -47,7 +47,7 @@ import evdev
 from evdev import ecodes
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.3.0"  # add-ons can require a minimum version
+VERSION = "1.3.01"  # add-ons can require a minimum version
 VID, PID = "00001B1C", "00002B18"
 KEYS = 12
 KEY_PX = 160
@@ -820,12 +820,23 @@ MEDIA_KEYS = {"play-pause": ecodes.KEY_PLAYPAUSE, "next": ecodes.KEY_NEXTSONG,
               "previous": ecodes.KEY_PREVIOUSSONG, "stop": ecodes.KEY_STOPCD}
 
 
+MOUSE_CLICKS = {"CLICK": (ecodes.BTN_LEFT, 1), "LEFTCLICK": (ecodes.BTN_LEFT, 1),
+                "DOUBLECLICK": (ecodes.BTN_LEFT, 2), "RIGHTCLICK": (ecodes.BTN_RIGHT, 1),
+                "MIDDLECLICK": (ecodes.BTN_MIDDLE, 1), "BACKCLICK": (ecodes.BTN_SIDE, 1),
+                "FORWARDCLICK": (ecodes.BTN_EXTRA, 1)}
+MIN_REPEAT_GAP = 0.001  # a repeat at 0 ms still yields, so it can't flood the desktop
+MAX_WAIT_MS = 60000
+MAX_MOVE = 10000
+MAX_SCROLL = 100
+
+
 class Keyboard:
-    """A uinput keyboard for numpad keys and shortcuts."""
+    """A uinput keyboard for numpad keys and shortcuts, plus a mouse created on first use."""
 
     def __init__(self):
         keys = [c for c in ecodes.keys if isinstance(c, int) and 0 < c < 0x2FF]
         self.ui = evdev.UInput({ecodes.EV_KEY: keys}, name="galleon-deck")
+        self.mouse_ui = None
         self.numlock_checked = False
         self.lock = threading.Lock()  # sequences type from their own thread
 
@@ -872,24 +883,104 @@ class Keyboard:
             self.ui.syn()
 
     @staticmethod
-    def steps(sequence):
-        """"W S D" or ["W", "S", "D"] -> one list of codes per step."""
-        items = sequence.split() if isinstance(sequence, str) else sequence
-        return [Keyboard.codes(item) for item in items]
+    def step(item):
+        """One sequence step: a list of key codes, or a ("click", button, count),
+        ("move", x, y), ("scroll", notches) or ("wait", ms) tuple."""
+        name = str(item).replace(" ", "").upper()
+        if name in MOUSE_CLICKS:
+            return ("click", *MOUSE_CLICKS[name])
+        m = re.fullmatch(r"(MOVE|SCROLL|WAIT):(.*)", name)
+        if not m:
+            return Keyboard.codes(item)
+        kind, args = m.group(1).lower(), m.group(2)
+        pattern, limit = {"move": (r"-?\d+,-?\d+", MAX_MOVE), "scroll": (r"-?\d+", MAX_SCROLL),
+                          "wait": (r"\d+", MAX_WAIT_MS)}[kind]
+        if not re.fullmatch(pattern, args):
+            raise ValueError(f"bad {kind} step {str(item)!r}")
+        values = [int(v) for v in args.split(",")]
+        if any(abs(v) > limit for v in values):
+            raise ValueError(f"{str(item)!r} is over the {kind} limit of {limit}")
+        return (kind, *values)
 
-    def type_sequence(self, steps, hold=(), step_ms=40):
-        """Tap each step in turn with `hold` held throughout, like a game combo
-        (Helldivers stratagems: hold Ctrl, then tap the arrows)."""
-        pause = max(10, min(500, int(step_ms))) / 1000
+    @staticmethod
+    def steps(sequence):
+        """"W S D" or ["W", "S", "D"] -> one step per item. A string can span lines
+        and take notes: anything after a # on a line is ignored."""
+        if isinstance(sequence, str):
+            items = [item for line in sequence.splitlines() for item in line.split("#", 1)[0].split()]
+        else:
+            items = sequence
+        return [Keyboard.step(item) for item in items]
+
+    @staticmethod
+    def mouse_steps(sequence):
+        """Steps for the mouse action, which takes no keys."""
+        steps = Keyboard.steps(sequence)
+        for step in steps:
+            if not isinstance(step, tuple):
+                raise ValueError("mouse actions take CLICK, MOVE:x,y, SCROLL:n and WAIT:ms, not keys")
+        return steps
+
+    def mouse(self):
+        if self.mouse_ui is None:
+            self.mouse_ui = evdev.UInput({
+                ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE,
+                                ecodes.BTN_SIDE, ecodes.BTN_EXTRA],
+                ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
+            }, name="galleon-deck-mouse")
+            time.sleep(0.2)  # give the desktop time to pick up the new device
+        return self.mouse_ui
+
+    def mouse_write(self, *events):
+        ui = self.mouse()
+        with self.lock:
+            for kind, code, value in events:
+                ui.write(kind, code, value)
+            ui.syn()
+
+    def click(self, button, count=1):
+        for n in range(count):
+            if n:
+                time.sleep(0.02)
+            self.mouse_write((ecodes.EV_KEY, button, 1))
+            time.sleep(0.02)  # some apps miss a press and release in the same instant
+            self.mouse_write((ecodes.EV_KEY, button, 0))
+
+    def run_step(self, step, pause, stop=None):
+        """Do one step, then wait out the gap to the next. `stop` cuts waits short."""
+        def wait(seconds):
+            if stop:
+                stop.wait(seconds)
+            elif seconds:
+                time.sleep(seconds)
+        if not isinstance(step, tuple):
+            self.press(step)
+            wait(pause)
+            self.release(step)
+        elif step[0] == "click":
+            self.click(step[1], step[2])
+        elif step[0] == "move":
+            self.mouse_write((ecodes.EV_REL, ecodes.REL_X, step[1]), (ecodes.EV_REL, ecodes.REL_Y, step[2]))
+        elif step[0] == "scroll":
+            self.mouse_write((ecodes.EV_REL, ecodes.REL_WHEEL, step[1]))
+        elif step[0] == "wait":
+            wait(step[1] / 1000)
+            return
+        wait(pause)
+
+    def type_sequence(self, steps, hold=(), step_ms=40, stop=None):
+        """Run each step in turn with `hold` held throughout, like a game combo
+        (Helldivers stratagems: hold Ctrl, then tap the arrows). Setting `stop`
+        ends it after the current step."""
+        pause = max(0, min(500, int(step_ms))) / 1000
         if hold:
             self.press(hold)
             time.sleep(pause)
         try:
-            for codes in steps:
-                self.press(codes)
-                time.sleep(pause)
-                self.release(codes)
-                time.sleep(pause)
+            for step in steps:
+                if stop and stop.is_set():
+                    break
+                self.run_step(step, pause, stop)
         finally:
             if hold:
                 self.release(hold)
@@ -1146,6 +1237,8 @@ def validate_pages(pages, where):
                     Keyboard.codes(k[field])  # validate now, not on first press
             if "sequence" in k:
                 Keyboard.steps(k["sequence"])
+            if "mouse" in k:
+                Keyboard.mouse_steps(k["mouse"])
 
 
 def ensure_config():
@@ -1319,6 +1412,7 @@ class App:
         self.key_state = [0] * KEYS
         self.held = {}  # key index -> codes held down
         self.typing = threading.Event()  # a sequence is being typed
+        self.cancellable = None  # (spec, stop) of a running one-shot that can be cut short
         self.repeating = {}  # key index -> Event that stops its repeat
         self.dial_down = [False, False]
         self.dial_turned = [False, False]
@@ -1599,8 +1693,11 @@ class App:
                 codes = Keyboard.codes(spec.get("key") or spec.get("keys"))
                 self.kb.press(codes)
                 self.held[i] = codes
-            if "sequence" in spec:
-                self.play_sequence(spec)
+            if "sequence" in spec or "mouse" in spec:
+                if spec.get("loop"):
+                    self.toggle_loop(i, spec)
+                else:
+                    self.play_sequence(spec)
             if "repeat" in spec:
                 self.toggle_repeat(i, spec)
             if "exec" in spec:
@@ -1625,28 +1722,70 @@ class App:
                 return
             if "brightness" in spec:
                 self.set_brightness(spec["brightness"])
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, evdev.UInputError) as e:
             log(f"key {i}: {e}")
         if self.page == page and self.profile == profile:  # a switch has already redrawn every key
             self.draw_key(i, pressed=True)
 
     def play_sequence(self, spec):
         """Type a key's sequence in the background, so the deck stays responsive.
-        A press while one is still typing is dropped rather than interleaved."""
+        A press while one is still typing is dropped rather than interleaved, except
+        that the same key cancels a sequence with a mouse or WAIT step. Keys-only
+        sequences can't be cancelled, so mashing a key can't cut a game combo short."""
         if self.typing.is_set():
+            running = self.cancellable
+            if running and running[0] == spec:
+                running[1].set()
             return
-        steps = Keyboard.steps(spec["sequence"])
-        hold = Keyboard.codes(spec["hold"]) if spec.get("hold") else []
+        steps, hold = self.sequence_of(spec)
+        stop = threading.Event() if any(isinstance(step, tuple) for step in steps) else None
+        self.cancellable = (spec, stop) if stop else None
         self.typing.set()
 
         def typing():
             try:
-                self.kb.type_sequence(steps, hold, spec.get("step_ms", 40))
-            except OSError as e:
+                self.kb.type_sequence(steps, hold, spec.get("step_ms", 40), stop)
+            except (OSError, evdev.UInputError) as e:
                 log(f"sequence: {e}")
             finally:
+                self.cancellable = None
                 self.typing.clear()
         threading.Thread(target=typing, daemon=True).start()
+
+    @staticmethod
+    def sequence_of(spec):
+        steps = Keyboard.steps(spec["sequence"]) if "sequence" in spec else Keyboard.mouse_steps(spec["mouse"])
+        return steps, Keyboard.codes(spec["hold"]) if spec.get("hold") else []
+
+    def toggle_loop(self, i, spec):
+        """First press starts running the sequence over and over; the next press
+        stops it. Switching page or profile, or a config reload, also stops it.
+        Other sequences wait their turn, so the two never type over each other."""
+        if i in self.repeating:
+            self.repeating.pop(i).set()
+            return
+        if self.typing.is_set():
+            return
+        steps, hold = self.sequence_of(spec)
+        if not steps:
+            return
+        interval = max(0, min(10000, int(spec.get("repeat_ms", 100)))) / 1000
+        stop = threading.Event()
+        self.repeating[i] = stop
+        self.typing.set()
+
+        def loop():
+            try:
+                while not stop.is_set():
+                    self.kb.type_sequence(steps, hold, spec.get("step_ms", 40), stop)
+                    stop.wait(max(interval, MIN_REPEAT_GAP))
+            except (OSError, evdev.UInputError) as e:
+                log(f"sequence: {e}")
+            finally:
+                if self.repeating.get(i) is stop:
+                    self.repeating.pop(i, None)
+                self.typing.clear()
+        threading.Thread(target=loop, daemon=True).start()
 
     def toggle_repeat(self, i, spec):
         """First press starts tapping the key over and over; the next press stops it.
@@ -1657,7 +1796,7 @@ class App:
         codes = Keyboard.codes(spec["repeat"])
         if str(spec["repeat"]).upper().startswith("KP"):
             self.kb.ensure_numlock()
-        interval = max(20, min(10000, int(spec.get("repeat_ms", 100)))) / 1000
+        interval = max(0, min(10000, int(spec.get("repeat_ms", 100)))) / 1000
         stop = threading.Event()
         self.repeating[i] = stop
 
@@ -1665,9 +1804,10 @@ class App:
             try:
                 while not stop.is_set():
                     self.kb.press(codes)
-                    time.sleep(0.02)  # games can miss a press and release in the same instant
+                    if interval:  # games can miss a press and release in the same instant
+                        time.sleep(0.02)
                     self.kb.release(codes)
-                    stop.wait(interval)
+                    stop.wait(max(interval, MIN_REPEAT_GAP))
             except OSError as e:
                 log(f"repeat: {e}")
         threading.Thread(target=repeat, daemon=True).start()

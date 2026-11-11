@@ -150,12 +150,57 @@ Add-ons use this, so removing one also removes its rule.
 { label = "Resupply", hold = "CTRL", sequence = "S S W D" }
 ```
 
-`sequence` taps keys in turn, with `hold` held throughout: game combos like Helldivers 2
-stratagems. `step_ms` sets the gap between taps (default 40).
+`sequence` runs steps in turn, with `hold` held throughout: game combos like Helldivers 2
+stratagems, or longer macros. `step_ms` sets the gap between steps (default 40, down to 0).
+A sequence can span several lines, and anything after a `#` on a line is a note.
+
+Add `loop = true` to repeat a whole sequence: press the deck key once to start and again to
+stop. `repeat_ms` sets the gap between runs (default 100, down to 0).
+
+```toml
+{ label = "Check list", sequence = "SPACE TAB", loop = true, step_ms = 10, repeat_ms = 0 }
+{ label = "Paste next", sequence = """
+    CTRL+V   # paste the URL
+    DOWN     # next row
+    HOME
+""" }
+```
+
+At very low delays some apps and games drop keys, so raise them if steps go missing.
+
+Pressing the deck key again cancels a running sequence if it has a mouse or `WAIT` step.
+Keys-only sequences always finish, so mashing a key can't cut a game combo short.
+
+`note` holds your own notes on any key. The deck doesn't show it.
+
+### Mouse
+
+Sequences can click, move, scroll and pause. The `mouse` action takes the same steps, without
+keys, and also works with `loop`.
+
+| Step | What it does |
+|---|---|
+| `CLICK`, `RIGHTCLICK`, `MIDDLECLICK` | Click a button |
+| `DOUBLECLICK` | Double-click the left button |
+| `BACKCLICK`, `FORWARDCLICK` | Click the side buttons |
+| `MOVE:100,-50` | Move right 100 and up 50, from wherever the cursor is |
+| `SCROLL:3`, `SCROLL:-3` | Scroll up or down |
+| `WAIT:500` | Pause for 500 ms (60000 at most) |
+
+```toml
+{ label = "Save as", sequence = "RIGHTCLICK WAIT:200 DOWN DOWN ENTER" }
+{ label = "Autoclick", mouse = "CLICK", loop = true, repeat_ms = 200 }
+```
+
+`MOVE` is relative and passes through your desktop's pointer settings, so with mouse
+acceleration on, the distance won't be exact pixels. Set a flat profile if you need it to be.
+Moving to exact screen coordinates isn't supported.
 
 `repeat` is a toggle: press the deck key once and it keeps tapping the key or shortcut
 until you press it again. The deck key stays lit while it runs, and switching page or
-profile stops it. `repeat_ms` sets the time between presses (default 100).
+profile stops it. `repeat_ms` sets the time between presses (default 100, down to 0). To
+repeat several keys in order, use a `sequence` with `loop = true`: `SPACE+TAB` presses both
+at once, while `sequence = "SPACE TAB"` presses one and then the other.
 
 ```toml
 { label = "Auto jump", repeat = "SPACE", repeat_ms = 250 }
